@@ -1,6 +1,9 @@
 import { dFetch, COLLECTION, requireEnv, checkAdminAuth } from '../_utils';
+import { applyCors } from '../_cors';
 
 export default async function handler(req, res) {
+  if (applyCors(req, res)) return;
+
   try {
     requireEnv();
     if (!checkAdminAuth(req)) return res.status(401).json({ ok:false, error:'unauthorized' });
@@ -19,7 +22,7 @@ export default async function handler(req, res) {
       if ('active'          in b) payload.active          = !!b.active;
 
       const r = await dFetch(`/items/${encodeURIComponent(COLLECTION)}/${id}`, {
-        method: 'PATCH', body: JSON.stringify(payload)
+        method: 'PATCH', body: JSON.stringify(payload),
       });
       const j = await r.json();
       if (!r.ok) return res.status(r.status).json({ ok:false, error:j });
@@ -34,6 +37,6 @@ export default async function handler(req, res) {
 
     return res.status(405).json({ ok:false, error:'Method not allowed' });
   } catch (e) {
-    return res.status(500).json({ ok:false, error: String(e) });
+    return res.status(500).json({ ok:false, error:String(e) });
   }
 }
