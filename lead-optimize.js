@@ -31,29 +31,71 @@ async function hashToPercent(input) {
   return n % 100; // 0..99
 }
 
-// === FIXED: zelfde filterlogica als debug ===
+/** Eén query die een set filters o.b.v. specificiteit ophaalt en
+ *  direct de beste ( hoogste specificiteit binnen deze trede en laagste priority ) teruggeeft. */
+async function fetchOneRuleWithPriority({ affiliate_id, offer_id, sub_id }) {
+  const p = new URLSearchParams();
+  p.append('fields', '*');
+  p.append('limit', '50');           // we sorteren zelf nog even extra
+  p.append('sort[]', 'priority');    // laagste priority (sterkst) eerst
+  p.append('filter[_and][0][active][_eq]', 'true');
+
+  // affiliate
+  if (affiliate_id === null) p.append('filter[_and][1][affiliate_id][_null]', 'true');
+  else p.append('filter[_and][1][affiliate_id][_eq]', String(affiliate_id));
+
+  // offer
+  if (offer_id === null) p.append('filter[_and][2][offer_id][_null]', 'true');
+  else p.append('filter[_and][2][offer_id][_eq]', String(offer_id));
+
+  // sub
+  if (sub_id === null) p.append('filter[_and][3][sub_id][_null]', 'true');
+  else p.append('filter[_and][3][sub_id][_eq]', String(sub_id));
+
+  const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
+  if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
+  const j = await r.json();
+  const rows = Array.isArray(j?.data) ? j.data : [];
+  // Server sorteert al op priority asc; neem de eerste als beste binnen deze trede
+  return rows[0] || null;
+}
+
+/** Nieuwe cascade:
+ *  1) sub-exact (affiliate+offer+sub)
+ *  2) combo (affiliate+offer, sub=null)
+ *  3) affiliate-only (offer=null, sub=null)
+ *  4) offer-only (affiliate=null, sub=null)
+ *  5) global (allemaal null)
+ */
 async function findRule({ affiliate_id, offer_id, sub_id }) {
-  const params = new URLSearchParams();
-  params.append('fields', '*');
-  params.append('limit', '1');
-  params.append('sort[]', '-priority');
-  params.append('filter[_and][0][active][_eq]', 'true');
-  params.append('filter[_and][1][affiliate_id][_eq]', String(affiliate_id));
-  params.append('filter[_and][2][offer_id][_eq]', String(offer_id));
+  const N = (v) => (v === undefined || v === null || v === '' ? null : String(v));
+  const aff = N(affiliate_id);
+  const off = N(offer_id);
+  const sub = N(sub_id);
 
-  // sub_id: exact + fallback null, of alleen null als je geen sub_id meestuurt
-  const normalizedSub = (sub_id === undefined || sub_id === null || sub_id === '') ? null : String(sub_id);
-  if (normalizedSub !== null) {
-    params.append('filter[_and][3][_or][0][sub_id][_eq]', normalizedSub);
-    params.append('filter[_and][3][_or][1][sub_id][_null]', 'true');
-  } else {
-    params.append('filter[_and][3][sub_id][_null]', 'true');
-  }
+  let rule, level;
 
-  const res = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${params.toString()}`);
-  if (!res.ok) throw new Error(`Rules ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  return (data?.data || [])[0] || null;
+  // 1) sub-exact
+  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: sub });
+  if (rule) return { rule, level: 'sub-exact' };
+
+  // 2) combo
+  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: null });
+  if (rule) return { rule, level: 'combo-aff+offer' };
+
+  // 3) affiliate-only
+  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: null, sub_id: null });
+  if (rule) return { rule, level: 'affiliate-only' };
+
+  // 4) offer-only
+  rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: off, sub_id: null });
+  if (rule) return { rule, level: 'offer-only' };
+
+  // 5) global
+  rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: null, sub_id: null });
+  if (rule) return { rule, level: 'global' };
+
+  return { rule: null, level: null };
 }
 
 // === counters (ongewijzigd) ===
@@ -131,8 +173,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
     }
 
-    // 1) Rule (nu met juiste filter)
-    const rule = await findRule(lead);
+    // 1) Rule (cascade + priority binnen trede)
+    const { rule, level } = await findRule(lead);
     if (!rule) return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
 
     // 2) (optioneel) cap per dag
@@ -152,7 +194,7 @@ export default async function handler(req, res) {
           addTotal: 1,
           addAccepted: 0
         });
-        return res.status(200).json({ ok:true, decision:'reject', reason:'daily-cap' });
+        return res.status(200).json({ ok:true, decision:'reject', reason:'daily-cap', rule_level: level });
       }
     }
 
@@ -172,25 +214,25 @@ export default async function handler(req, res) {
       addAccepted: accept ? 1 : 0,
     });
 
-    // 5) Postback (alleen clickid meesturen) — optioneel
+    // 5) Postback bij accept
     if (accept) {
       try {
         await postbackToAffise(lead.clickid);
         return res.status(200).json({
-          ok:true, decision:'accept', forwarded:true, rule: {
+          ok:true, decision:'accept', forwarded:true, rule_level: level, rule: {
             id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
           }
         });
       } catch (e) {
         return res.status(200).json({
-          ok:true, decision:'accept', forwarded:false, error:String(e), rule: {
+          ok:true, decision:'accept', forwarded:false, error:String(e), rule_level: level, rule: {
             id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
           }
         });
       }
     } else {
       return res.status(200).json({
-        ok:true, decision:'reject', rule: {
+        ok:true, decision:'reject', rule_level: level, rule: {
           id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
         }
       });
