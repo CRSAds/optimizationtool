@@ -1,42 +1,302 @@
-:root{
-  --bg:#f7f9fc; --panel:#ffffff; --panel-2:#f2f5fb;
-  --text:#0f172a; --muted:#5b6b85; --brand:#0057ff;
-  --ok:#10916f; --danger:#d92d20; --border:#e5e8f0; --thead:#eef3ff;
-}
-*{box-sizing:border-box}
-.rules-wrap{max-width:1100px;margin:0 auto;padding:0}
-.rules-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 18px rgb(16 24 40 / .06);margin-bottom:18px}
-.rules-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
-.rules-label{font-size:12px;color:var(--muted)}
-.rules-input{background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:10px;height:36px;padding:0 12px;outline:none}
-.rules-input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgb(0 87 255 / .18);background:#fff}
-.rules-btn{height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--border);background:#0f172a;color:#fff;cursor:pointer}
-.rules-btn.ghost{background:#fff;color:#0f172a}
-.rules-btn.ok{background:linear-gradient(180deg,#13c28d,#10916f);border-color:transparent}
-.rules-btn.danger{background:linear-gradient(180deg,#f26a5e,#d92d20);border-color:transparent}
+// /public/js/rules-ui.js
+(() => {
+  // ====== CONFIG ======
+  const API_RULES     = 'https://optimizationtool.vercel.app/api/rules';
+  const DEFAULT_TOKEN = 'ditiseenlanggeheimtoken';
 
-.group{border-top:1px solid var(--border)}
-.group-header{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--thead);cursor:pointer}
-.group-title{font-weight:700;color:var(--text)}
-.group-sub{color:var(--muted);font-size:12px;margin-left:auto}
-.chev{width:16px;height:16px;display:inline-block;transform:rotate(-90deg);transition:transform .15s}
-.group.collapsed .chev{transform:rotate(0deg)}
+  // DOM helpers
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
-.table-wrap{overflow:auto}
-table.rules{width:100%;border-collapse:separate;border-spacing:0}
-table.rules thead th{position:sticky;top:0;background:var(--thead);color:var(--text);text-align:left;font-size:12px;letter-spacing:.35px;text-transform:uppercase;padding:10px 10px;border-bottom:1px solid var(--border)}
-table.rules tbody td{padding:8px 8px;border-bottom:1px solid var(--border);background:#fff}
-table.rules tbody tr:nth-child(odd) td{background:#fbfdff}
-table.rules tbody tr:hover td{background:#eef6ff}
-table.rules input[type=text], table.rules input[type=number]{width:100%;background:#fff;border:1px solid var(--border);border-radius:8px;height:32px;padding:0 8px}
-.chk{width:18px;height:18px;vertical-align:middle}
-.row-actions{display:flex;gap:6px}
-.group-body{padding:0 14px 12px;display:none}
-.group:not(.collapsed) .group-body{display:block}
+  function authHeaders(){
+    const t = $('#admintoken').value.trim();
+    return {'X-Admin-Token': t, 'Content-Type':'application/json'};
+  }
 
-.newbar{padding:12px 14px;border-top:1px dashed var(--border);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.newbar .w-lg{min-width:240px}
-.newbar .w-sm{min-width:160px}
-.newbar .w-xs{width:100px}
-.hint{margin:8px 14px 14px;color:var(--muted);font-size:12px}
-.rules-empty{padding:18px;color:var(--muted);text-align:center}
+  // ---------- Omschrijving helpers ----------
+  function readDesc(item){
+    return item?.description
+        ?? item?.Omschrijving
+        ?? item?.omschrijving
+        ?? item?.Beschrijving
+        ?? item?.beschrijving
+        ?? '';
+  }
+  function writeDesc(payload){
+    const d = payload?.description ??
+              payload?.Omschrijving ??
+              payload?.omschrijving ??
+              payload?.Beschrijving ??
+              payload?.beschrijving ?? null;
+    const out = {...payload};
+    delete out.description; delete out.omschrijving; delete out.Beschrijving; delete out.beschrijving;
+    if (d !== null) out.Omschrijving = d; // schrijf expliciet naar "Omschrijving"
+    return out;
+  }
+
+  // ---------- State ----------
+  let RAW = [];                  // alle regels uit API
+  let FILTERED = [];             // na filter
+  let GROUPS = [];               // gegroepeerd per offer_id
+  const UI = {
+    tableBody: $('#rules tbody'),
+    f_text:  $('#f_text'),
+    f_aff:   $('#f_aff'),
+    f_off:   $('#f_off'),
+    f_sub:   $('#f_sub'),
+    f_pmin:  $('#f_pmin'),
+    f_pmax:  $('#f_pmax'),
+    f_active:$('#f_active'),
+  };
+
+  // ---------- Data fetch ----------
+  async function fetchRules(){
+    UI.tableBody.innerHTML = rowSpan(`<td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Laden…</td>`);
+    const r = await fetch(API_RULES, { headers: authHeaders() });
+    if(!r.ok){
+      UI.tableBody.innerHTML = rowSpan(`<td colspan="9" style="text-align:center;color:var(--danger);padding:22px">Error ${r.status}</td>`);
+      return;
+    }
+    const j = await r.json();
+    RAW = Array.isArray(j.items) ? j.items : [];
+    applyFiltersAndRender();
+  }
+
+  // ---------- Filtering + grouping ----------
+  function passesFilter(it){
+    const txt = (UI.f_text?.value || '').trim().toLowerCase();
+    const aff = (UI.f_aff?.value  || '').trim();
+    const off = (UI.f_off?.value  || '').trim();
+    const sub = (UI.f_sub?.value  || '').trim();
+    const pmin= UI.f_pmin?.value !== '' ? Number(UI.f_pmin.value) : null;
+    const pmax= UI.f_pmax?.value !== '' ? Number(UI.f_pmax.value) : null;
+    const act = UI.f_active?.value;
+
+    // text in description
+    if (txt){
+      const d = (readDesc(it)+'').toLowerCase();
+      if (!d.includes(txt)) return false;
+    }
+    if (aff && String(it.affiliate_id||'') !== aff) return false;
+    if (off && String(it.offer_id||'')     !== off) return false;
+    if (sub && String(it.sub_id??'')       !== sub) return false;
+
+    const pr = Number(it.priority ?? 100);
+    if (pmin!==null && pr < pmin) return false;
+    if (pmax!==null && pr > pmax) return false;
+
+    if (act==='1' && !it.active) return false;
+    if (act==='0' && !!it.active) return false;
+
+    return true;
+  }
+
+  function groupByOffer(items){
+    // key: offer_id (null/"" -> 'GLOBAL')
+    const map = new Map();
+    for(const it of items){
+      const key = (it.offer_id === null || it.offer_id === '' || typeof it.offer_id === 'undefined')
+        ? 'GLOBAL'
+        : String(it.offer_id);
+      if(!map.has(key)) map.set(key, []);
+      map.get(key).push(it);
+    }
+    // sort binnen groep op priority asc, dan affiliate_id, dan sub_id
+    const out = [];
+    for(const [offerKey, arr] of map.entries()){
+      arr.sort((a,b)=>{
+        const pa = Number(a.priority ?? 100);
+        const pb = Number(b.priority ?? 100);
+        if (pa !== pb) return pa - pb;
+        const aa = String(a.affiliate_id ?? '');
+        const ab = String(b.affiliate_id ?? '');
+        if (aa !== ab) return aa.localeCompare(ab);
+        const sa = String(a.sub_id ?? '');
+        const sb = String(b.sub_id ?? '');
+        return sa.localeCompare(sb);
+      });
+      out.push({ offerKey, items: arr, open: false });
+    }
+    // sort groepen: GLOBAL eerst, daarna numeriek/alfabetisch
+    out.sort((g1,g2)=>{
+      if (g1.offerKey==='GLOBAL' && g2.offerKey!=='GLOBAL') return -1;
+      if (g2.offerKey==='GLOBAL' && g1.offerKey!=='GLOBAL') return 1;
+      // probeer numeriek
+      const n1 = Number(g1.offerKey); const n2 = Number(g2.offerKey);
+      const n1ok = !Number.isNaN(n1); const n2ok = !Number.isNaN(n2);
+      if (n1ok && n2ok) return n1 - n2;
+      return g1.offerKey.localeCompare(g2.offerKey);
+    });
+    return out;
+  }
+
+  function applyFiltersAndRender(){
+    FILTERED = RAW.filter(passesFilter);
+    GROUPS = groupByOffer(FILTERED);
+    renderTable();
+  }
+
+  // ---------- Rendering ----------
+  function rowSpan(html){ return `<tr>${html}</tr>`; }
+
+  function trGroupHeader(g){
+    const total = g.items.length;
+    const active = g.items.filter(it=>!!it.active).length;
+    const offLabel = g.offerKey==='GLOBAL' ? 'GLOBAL (alle offers)' : `Offer ${g.offerKey}`;
+    const icon = g.open ? '▾' : '▸';
+    return `
+      <tr class="group" data-offer="${g.offerKey}">
+        <td style="text-align:center"><button class="btn small ghost" data-act="toggle">${icon}</button></td>
+        <td colspan="2"><b>${offLabel}</b></td>
+        <td colspan="4" style="color:var(--muted)">Regels: ${total} • Actief: ${active}</td>
+        <td colspan="2" style="text-align:right">
+          <button class="btn small ghost" data-act="expand-one">${g.open?'Inklappen':'Uitklappen'}</button>
+        </td>
+      </tr>`;
+  }
+
+  function trRuleRow(it){
+    const esc = s => (s ?? '').toString().replace(/"/g,'&quot;');
+    const desc = readDesc(it);
+    return `
+      <tr class="row" data-id="${it.id}">
+        <td></td>
+        <td><input type="text" value="${esc(desc)}" data-k="description"></td>
+        <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
+        <td><input type="text" value="${esc(it.offer_id)}" data-k="offer_id"></td>
+        <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
+        <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
+        <td><input type="number" value="${Number(it.priority ?? 100)}" data-k="priority"></td>
+        <td style="text-align:center"><input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active"></td>
+        <td class="actions">
+          <button class="btn small ghost" data-act="save">Save</button>
+          <button class="btn small danger" data-act="delete">Del</button>
+        </td>
+      </tr>`;
+  }
+
+  function renderTable(){
+    if (!GROUPS.length){
+      UI.tableBody.innerHTML = rowSpan(`<td colspan="9" style="text-align:center;color:var(--muted);padding:22px">Geen regels</td>`);
+      return;
+    }
+    const parts = [];
+    for(const g of GROUPS){
+      parts.push(trGroupHeader(g));
+      if (g.open){
+        for(const it of g.items){
+          parts.push(trRuleRow(it));
+        }
+      }
+    }
+    UI.tableBody.innerHTML = parts.join('');
+  }
+
+  // ---------- Events ----------
+  // Groepsinteractie
+  $('#rules').addEventListener('click', async (ev)=>{
+    const btn = ev.target.closest('button'); if(!btn) return;
+    const act = btn.dataset.act;
+    const tr  = btn.closest('tr');
+    if (tr?.classList.contains('group')){
+      const key = tr.dataset.offer;
+      const g = GROUPS.find(x=>x.offerKey===key);
+      if (!g) return;
+      if (act==='toggle' || act==='expand-one'){
+        g.open = !g.open;
+        renderTable();
+      }
+      return;
+    }
+
+    // Child-row acties
+    if (tr?.classList.contains('row')){
+      const id = tr.dataset.id;
+      if (act==='delete'){
+        if(!confirm('Deze regel verwijderen?')) return;
+        const r = await fetch(`${API_RULES}/${id}`, { method:'DELETE', headers: authHeaders() });
+        if(r.status===204){
+          // uit RAW halen en opnieuw renderen
+          RAW = RAW.filter(x=>String(x.id)!==String(id));
+          applyFiltersAndRender();
+        } else {
+          alert('Delete failed');
+        }
+        return;
+      }
+      if (act==='save'){
+        const fields = tr.querySelectorAll('input[data-k]');
+        const payload = {};
+        fields.forEach(el=>{
+          const k = el.dataset.k;
+          if(el.type==='checkbox') payload[k] = el.checked;
+          else payload[k] = el.value === '' ? null : el.value;
+        });
+        if(payload.sub_id === 'null') payload.sub_id = null;
+        payload.percent_accept = Number(payload.percent_accept ?? 0);
+        payload.priority       = Number(payload.priority ?? 100);
+
+        const body = writeDesc(payload);
+        const r = await fetch(`${API_RULES}/${id}`, { method:'PATCH', headers: authHeaders(), body: JSON.stringify(body) });
+        if(r.ok){
+          // verversen uit server om canonieke velden te hebben
+          await fetchRules();
+        } else {
+          alert('Save failed');
+        }
+      }
+    }
+  });
+
+  // Filters: meteen toepassen bij input
+  ['input','change'].forEach(evt=>{
+    $$('.filters-top input, .filters-top select').forEach(el=>{
+      el.addEventListener(evt, ()=>{
+        applyFiltersAndRender();
+      });
+    });
+  });
+
+  // Reload knop
+  $('#reload').addEventListener('click', fetchRules);
+
+  // Nieuwe regel
+  $('#newRule').addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const p  = Object.fromEntries(fd.entries());
+    p.active = !!fd.get('active');
+    if(p.sub_id === 'null') p.sub_id = null;
+    p.percent_accept = Number(p.percent_accept ?? 0);
+    p.priority       = Number(p.priority ?? 100);
+
+    const body = writeDesc(p);
+    const r = await fetch(API_RULES, { method:'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    if(r.ok){
+      ev.target.reset();
+      ev.target.querySelector('input[name=percent_accept]').value = 50;
+      ev.target.querySelector('input[name=priority]').value = 100;
+      await fetchRules();
+    } else {
+      const t = await r.text().catch(()=> '');
+      alert(`Create failed: ${r.status} ${t || ''}`.trim());
+    }
+  });
+
+  // Preset chips
+  document.addEventListener('click', (e)=>{
+    const chip = e.target.closest('.chip'); if(!chip) return;
+    try{
+      const fill = JSON.parse(chip.dataset.fill || '{}');
+      const f = $('#newRule');
+      if('affiliate_id' in fill) f.affiliate_id.value = fill.affiliate_id;
+      if('offer_id'     in fill) f.offer_id.value     = fill.offer_id;
+      if('sub_id'       in fill) f.sub_id.value       = fill.sub_id;
+      if('priority'     in fill) f.priority.value     = fill.priority;
+    }catch{}
+  });
+
+  // Init
+  $('#admintoken').value = DEFAULT_TOKEN;   // standaard invullen
+  fetchRules();
+})();
