@@ -212,3 +212,24 @@ table.rules input[data-k="priority"]{max-width: 86px}
   .rules-input{min-width:160px}
   table.rules input[data-k="description"]{max-width:200px}
 }
+
+/* Groepen strak tegen elkaar, maar met marge links/rechts in de card */
+.group{
+  border:1px solid var(--border);
+  border-radius:0;           /* rechte hoeken */
+  margin:0 12px;             /* witruimte links/rechts */
+  overflow:hidden;
+}
+
+/* Geen verticale ruimte tussen opvolgende groepen */
+.group + .group{ margin-top:0; }
+
+/* Kop iets compacter */
+.group-header{
+  background:var(--thead);
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+  min-height:48px;           /* nette hoogte */
+}
+
+.group-header:hover{ filter:brightness(0.98); }
