@@ -1,30 +1,10 @@
 // pages/api/rules/index.js
-// LIST (GET) + CREATE (POST)
+import { applyCors } from './_cors.js';
 
 const DIRECTUS_URL   = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 const COLLECTION     = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
-
-// ---- CORS helpers ----
-function parseAllowed() {
-  return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-function applyCors(req, res) {
-  const allowed = parseAllowed();
-  const origin = req.headers.origin;
-  if (origin && (allowed.includes('*') || allowed.includes(origin))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token');
-  if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
-  return false;
-}
 
 // ---- Directus fetch ----
 function dFetch(path, init = {}) {
@@ -39,13 +19,13 @@ function dFetch(path, init = {}) {
     ...(init.headers || {}),
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   };
   return fetch(url, { ...init, headers });
 }
 
 // ---- description <-> Omschrijving mapping ----
 function mapOut(row) {
-  // Directus row -> UI (normalizeer naar "description")
   return {
     id: row.id,
     description: row.Omschrijving ?? row.description ?? null,
@@ -58,7 +38,6 @@ function mapOut(row) {
   };
 }
 function mapIn(p) {
-  // UI payload -> Directus body (schrijf altijd "Omschrijving")
   const desc =
     p?.description ??
     p?.Omschrijving ??
@@ -72,7 +51,7 @@ function mapIn(p) {
     affiliate_id: p.affiliate_id === '' ? null : (p.affiliate_id ?? null),
     offer_id:     p.offer_id     === '' ? null : (p.offer_id     ?? null),
     sub_id:
-      p.sub_id === 'null' ? null :
+      String(p.sub_id).toLowerCase() === 'null' ? null :
       (p.sub_id === '' ? null : (p.sub_id ?? null)),
     percent_accept: Number(p.percent_accept ?? 0),
     priority:       Number(p.priority ?? 100),
@@ -85,7 +64,7 @@ export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
   // Admin auth
-  const hdr = req.headers['x-admin-token'];
+  const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
     return res.status(403).json({ ok:false, error:'forbidden' });
   }
@@ -93,7 +72,6 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const qs = new URLSearchParams({
-        // vraag "Omschrijving" op i.p.v. description
         fields: 'id,Omschrijving,affiliate_id,offer_id,sub_id,percent_accept,priority,active',
         sort: 'priority',
         limit: '200',
@@ -107,15 +85,21 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = mapIn(req.body || {});
+      // mini-validaties
+      const errs = [];
+      if (!body.Omschrijving || !String(body.Omschrijving).trim()) errs.push('Omschrijving verplicht');
+      const pct = Number(body.percent_accept);
+      if (Number.isNaN(pct) || pct<0 || pct>100) errs.push('percent_accept 0–100');
+      const pri = Number(body.priority);
+      if (Number.isNaN(pri) || pri<0) errs.push('priority ≥ 0');
+      if (errs.length) return res.status(400).json({ ok:false, error: 'Validation: '+errs.join(', ') });
+
       const r = await dFetch(`/items/${encodeURIComponent(COLLECTION)}`, {
         method: 'POST',
         body: JSON.stringify(body),
       });
       const j = await r.json();
-      if (!r.ok) {
-        // vaak 403 = rol/perm issue
-        return res.status(r.status).json(j);
-      }
+      if (!r.ok) return res.status(r.status).json(j);
       return res.status(201).json({ ok:true, item: mapOut(j.data) });
     }
 
