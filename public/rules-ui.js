@@ -265,6 +265,52 @@
         return el;
       }
 
+      function renderNewOfferPanel(){
+  const el = document.createElement('div');
+  el.className = 'new-offer-panel';
+  el.innerHTML = `
+    <h3>Nieuwe regel toevoegen (nieuw offer kan hier ook)</h3>
+    <input class="rules-input w-offer" type="text" data-new="offer_id" placeholder="Offer ID (leeg = ANY)">
+    <input class="rules-input w-desc"  type="text" data-new="description" placeholder="Omschrijving">
+    <input class="rules-input w-sm"   type="text" data-new="affiliate_id" placeholder="Affiliate ID (leeg=any)">
+    <input class="rules-input w-sm"   type="text" data-new="sub_id" placeholder="Sub ID (leeg of 'null')">
+    <input class="rules-input w-xs"   type="number" data-new="percent_accept" placeholder="% Accept" value="50" min="0" max="100">
+    <input class="rules-input w-xs"   type="number" data-new="priority" placeholder="Priority" value="100" min="0">
+    <label><input class="chk" type="checkbox" data-new="active" checked> Active</label>
+    <button class="rules-btn ok" type="button" data-role="create-offer">Toevoegen</button>
+  `;
+
+  el.querySelector('[data-role="create-offer"]').addEventListener('click', async ()=>{
+    const q = (k)=> el.querySelector(`[data-new="${k}"]`);
+    const p = {
+      description    : (q('description').value || '').trim(),
+      affiliate_id   : emptyToNull(q('affiliate_id').value),
+      offer_id       : emptyToNull(q('offer_id').value), // leeg => ANY/global
+      sub_id         : normalizeSub(q('sub_id').value),
+      percent_accept : Number(q('percent_accept').value || 0),
+      priority       : Number(q('priority').value || 100),
+      active         : q('active').checked
+    };
+    const body = writeDesc(p);
+    const val = validateRow(body);
+    if(val!==true){ toast(val, 'err'); return; }
+
+    try{
+      const r = await fetch(cfg.apiRules, { method:'POST', headers: hdrs(), body: JSON.stringify(body) });
+      if(!r.ok){ const t = await safeText(r); throw new Error(t||r.status); }
+      toast('Regel aangemaakt');
+      // reset en herladen zodat de nieuwe group zichtbaar is
+      ['offer_id','description','affiliate_id','sub_id'].forEach(k=> q(k).value='');
+      q('percent_accept').value = 50; q('priority').value = 100; q('active').checked = true;
+      loadAll();
+    }catch(e){
+      toast('Create failed: '+String(e.message||e), 'err');
+    }
+  });
+
+  return el;
+}
+      
       function updateGroupMeta(groupEl){
         const rowsVisible = [...groupEl.querySelectorAll('tbody tr')].filter(tr=> tr.style.display !== 'none').length;
         const meta = groupEl.querySelector('.group-sub');
