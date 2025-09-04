@@ -1,129 +1,222 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-:root{
-  --bg:#f8fafc;
-  --panel:#fff;
-  --panel-2:#f1f5f9;
-  --text:#1e293b;
-  --muted:#64748b;
-  --brand:#2563eb;
-  --ok:#10916f;
-  --danger:#d92d20;
-  --border:#e2e8f0;
-  --thead:#e9eef6;
+/* ==== Design tokens ==== */
+:root {
+  --bg: #f8fafc;
+  --panel: #fff;
+  --panel-2: #f1f5f9;
+  --text: #1e293b;
+  --muted: #64748b;
+  --brand: #2563eb;
+  --ok: #10b981;
+  --danger: #ef4444;
+  --border: #e2e8f0;
+  --thead: #e9eef7;
 }
 
-*{box-sizing:border-box}
-body{
-  font-family:'Inter',system-ui,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  margin:0;
+/* ==== Scope alles binnen #rules-app om conflicts te voorkomen ==== */
+#rules-app {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
 }
 
-/* ---------- container / card ---------- */
-.rules-wrap{max-width:1100px;margin:0 auto;padding:32px 24px 48px}
-.rules-card{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:18px;
-  margin-bottom:24px;
+/* ---- Shell ---- */
+#rules-app .rui-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 20px 48px 20px;
+  box-sizing: border-box;
 }
 
-/* ---------- toolbar (token + filters) ---------- */
-.rules-toolbar{
-  padding:20px 24px 12px;
-  display:flex;flex-wrap:wrap;gap:12px;align-items:center;
-  border-bottom:1px solid var(--border);
-}
-.rules-label{font-size:14px;color:var(--muted);font-weight:600;letter-spacing:.2px}
-
-.rules-input{
-  background:var(--panel-2);
-  border:1.5px solid var(--border);
-  color:var(--text);
-  border-radius:12px;
-  height:42px;
-  padding:0 14px;
-  outline:none;
-  font-size:15px;
-  transition:border .15s, box-shadow .15s, background .15s;
-}
-.rules-input:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-
-.rules-btn{
-  height:42px;padding:0 22px;border-radius:12px;border:1.5px solid var(--brand);
-  background:var(--brand);color:#fff;font-weight:700;font-size:15px;cursor:pointer;
-}
-.rules-btn.ghost{background:#fff;color:var(--brand)}
-.rules-btn.ok{background:var(--ok);border-color:var(--ok)}
-.rules-btn.danger{background:var(--danger);border-color:var(--danger)}
-.rules-btn:hover{filter:brightness(1.07)}
-
-/* ---------- filterbar ---------- */
-.filters{
-  width:100%;
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr 130px 160px 160px;
-  gap:10px;
-  padding:0 24px 16px;
-}
-.filters .rules-input{height:40px}
-.filters .rules-switch{
-  display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px
+#rules-app .rui-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin-bottom: 28px;
 }
 
-/* ---------- groups (per offer) ---------- */
-.group{border-top:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px}
-.group-header{
-  display:flex;align-items:center;gap:12px;cursor:pointer;
-  background:var(--thead);
-  padding:18px 24px 16px;   /* extra top-ruimte */
-  border-bottom:1px solid var(--border);
+/* ---- Toolbar / Filterbar ---- */
+#rules-app .rui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 18px 18px 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
 }
-.group-title{font-weight:800;color:var(--text);font-size:18px}
-.group-sub{margin-left:auto;color:var(--muted);font-size:14px}
-.chev{width:18px;height:18px;display:inline-block;transform:rotate(-90deg);transition:transform .15s}
-.group.collapsed .chev{transform:rotate(0deg)}
 
-.group-body{display:none;padding:0 0 14px}
-.group:not(.collapsed) .group-body{display:block}
-
-/* ---------- table ---------- */
-.table-wrap{overflow-x:auto}
-table.rules{width:100%;border-collapse:separate;border-spacing:0;background:#fff}
-table.rules thead th, table.rules tbody td{padding:12px 24px}
-table.rules thead th{
-  position:sticky;top:0;background:var(--thead);color:var(--text);
-  text-align:left;font-size:13px;letter-spacing:.3px;text-transform:uppercase;
-  border-bottom:1.5px solid var(--border);white-space:nowrap;line-height:1;  /* 1 regel, strak */
+#rules-app .rui-label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: .2px;
+  margin-right: 6px;
 }
-table.rules tbody td{border-bottom:1px solid var(--border);background:#fff}
-table.rules tbody tr:nth-child(odd) td{background:#f6f9ff}
-table.rules tbody tr:hover td{background:#edf4ff}
 
-table.rules input[type=text], table.rules input[type=number]{
-  width:100%;background:#fff;border:1.4px solid var(--border);border-radius:8px;height:36px;padding:0 10px;font-size:15px
+/* Inputs & Buttons */
+#rules-app .rui-input {
+  background: var(--panel-2);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  height: 42px;
+  padding: 0 14px;
+  outline: none;
+  font-size: 15px;
+  transition: border .15s, box-shadow .15s, background .15s;
+  min-width: 180px;                /* voorkomt afsnijden placeholder */
 }
-.chk{width:20px;height:20px;vertical-align:middle}
-.row-actions{display:flex;gap:10px}
-
-/* ---------- “nieuwe regel” bar (one-liner) ---------- */
-.newbar{
-  display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
-  padding:12px 24px;border-top:1px dashed var(--border);background:var(--panel-2);
-  overflow:auto; /* horizontaal scrollen op smal ipv wrap */
+#rules-app .rui-input:focus {
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / .15);
 }
-.newbar .rules-input{height:38px}
-.newbar .w-lg{min-width:240px}
-.newbar .w-sm{min-width:160px}
-.newbar .w-xs{width:100px}
+#rules-app .rui-input--sm { min-width: 120px; }
+#rules-app .rui-input--xs { width: 90px; min-width: 90px; }
 
-/* lege staat */
-.rules-empty{padding:26px;color:var(--muted);text-align:center;font-size:16px}
+#rules-app .rui-btn {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1.5px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: filter .15s, border .15s;
+}
+#rules-app .rui-btn:hover { filter: brightness(1.06); }
+#rules-app .rui-btn--ghost {
+  background: #fff; color: var(--brand); border-color: var(--brand);
+}
+#rules-app .rui-btn--ok {
+  background: var(--ok); border-color: var(--ok);
+}
+#rules-app .rui-btn--danger {
+  background: var(--danger); border-color: var(--danger);
+}
 
-/* responsive */
-@media (max-width: 900px){
-  .filters{grid-template-columns:1fr 1fr;gap:8px}
-  .newbar{flex-wrap:wrap}
+/* ---- Groups (per offer) ---- */
+#rules-app .rui-group {
+  border-top: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+#rules-app .rui-group__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;              /* extra bovenruimte */
+  background: var(--thead);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+#rules-app .rui-group__title {
+  font-weight: 800;
+}
+#rules-app .rui-group__meta {
+  color: var(--muted);
+  font-weight: 600;
+  margin-left: auto;
+}
+#rules-app .rui-chev {
+  width: 18px; height: 18px; display: inline-block;
+  transform: rotate(-90deg); transition: transform .15s;
+}
+#rules-app .rui-group.rui--collapsed .rui-chev { transform: rotate(0deg); }
+
+#rules-app .rui-group__body {
+  display: none;
+  padding: 0 18px 18px 18px;
+}
+#rules-app .rui-group:not(.rui--collapsed) .rui-group__body { display: block; }
+
+/* ---- Tabel ---- */
+#rules-app .rui-table-wrap { overflow-x: auto; }
+
+#rules-app table.rui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  font-size: 15px;
+}
+
+#rules-app table.rui-table thead th,
+#rules-app table.rui-table tbody td {
+  padding: 12px 18px;
+}
+
+/* Koppen: één regel, nette align en extra top-ruimte */
+#rules-app table.rui-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--thead);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;              /* << nooit meer 2 regels */
+  line-height: 1;                   /* strakker */
+  padding-top: 16px;                /* iets meer lucht boven */
+  padding-bottom: 14px;
+}
+
+#rules-app table.rui-table tbody td {
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+#rules-app table.rui-table tbody tr:nth-child(odd) td { background:#f7f9ff; }
+#rules-app table.rui-table tbody tr:hover td { background:#eef4ff; }
+
+#rules-app table.rui-table input[type=text],
+#rules-app table.rui-table input[type=number]{
+  width: 100%;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+#rules-app .rui-chk { width: 20px; height: 20px; vertical-align: middle; }
+#rules-app .rui-row-actions { display:flex; gap:8px; }
+
+/* ---- “Nieuwe regel” op 1 rij ---- */
+#rules-app .rui-newbar {
+  margin-top: 10px;
+  background: var(--panel-2);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+/* De inputs staan écht op één rij; op mobiel kan je horizontaal scrollen */
+#rules-app .rui-newbar__scroll { overflow-x: auto; }
+#rules-app .rui-newbar__row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 2fr) minmax(150px, 1.1fr) minmax(150px, 1.1fr)
+                    minmax(100px, .8fr) minmax(100px, .8fr) minmax(120px, .9fr) min-content;
+  gap: 10px;
+  align-items: center;
+  min-width: 980px; /* zorgt dat het één rij blijft en desnoods scrolt */
+}
+#rules-app .rui-newbar__row label { display:flex; align-items:center; gap:8px; }
+
+/* ---- Leeg / fout ---- */
+#rules-app .rui-empty { padding: 22px; color: var(--muted); text-align: center; font-size: 16px; }
+#rules-app .rui-empty.rui--error { color: var(--danger); }
+
+/* ---- Respons ---- */
+@media (max-width: 720px){
+  #rules-app .rui-input { min-width: 140px; }
 }
