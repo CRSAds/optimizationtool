@@ -30,9 +30,10 @@
       // first load
       loadAll(cfg);
 
-      // Nieuw offer-paneel toevoegen onderaan de root
+      // Nieuw offer-paneel toevoegen altijd onderaan de rules-wrap, buiten de card
+      const rulesWrap = root.querySelector('.rules-wrap');
       const newOfferPanel = renderNewOfferPanel(cfg);
-      root.appendChild(newOfferPanel);
+      rulesWrap.appendChild(newOfferPanel);
     }
   };
 
