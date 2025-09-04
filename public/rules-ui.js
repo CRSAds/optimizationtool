@@ -29,6 +29,10 @@
 
       // first load
       loadAll(cfg);
+
+      // Nieuw offer-paneel toevoegen onderaan de root
+      const newOfferPanel = renderNewOfferPanel(cfg);
+      root.appendChild(newOfferPanel);
     }
   };
 
