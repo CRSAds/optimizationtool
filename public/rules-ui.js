@@ -1,9 +1,10 @@
+// /public/rules-ui.js
 (function(global){
   const RulesUI = {
     init(opts){
       const cfg = {
         mount   : opts.mount || '#rules-app',
-        token   : opts.token || '',
+        token   : opts.token || localStorage.getItem('rui_token') || '',
         apiBase : (opts.apiBase || '').replace(/\/+$/,''),
       };
       cfg.apiRules = cfg.apiBase + '/rules';
@@ -11,66 +12,105 @@
       const root = document.querySelector(cfg.mount);
       if(!root){ console.error('RulesUI: mount not found'); return; }
 
-      root.innerHTML = `
-        <div class="rui-wrap">
-          <div class="rui-card">
-            <div class="rui-toolbar">
-              <span class="rui-label">Admin API • X-Admin-Token</span>
-              <input id="rui-token" class="rui-input" type="password" style="width:260px">
-              <button id="rui-reload" class="rui-btn">Reload</button>
+      // toast host
+      if(!document.getElementById('rules-toast')){
+        const t = document.createElement('div');
+        t.id = 'rules-toast';
+        t.style.cssText = 'position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99999';
+        document.body.appendChild(t);
+      }
 
-              <input id="f_offer" class="rui-input rui-input--sm" placeholder="Filter: Offer ID">
-              <input id="f_aff"   class="rui-input rui-input--sm" placeholder="Filter: Affiliate ID">
-              <input id="f_sub"   class="rui-input rui-input--sm" placeholder="Filter: Sub ID of 'null'">
-              <input id="f_pri"   class="rui-input rui-input--xs" placeholder="≤ Priority" type="number" min="0">
-              <input id="f_q"     class="rui-input" placeholder="Zoek in omschrijving">
+      root.innerHTML = `
+        <div class="rules-wrap">
+          <div class="rules-card">
+            <div class="rules-toolbar">
+              <span class="rules-label">Admin API • X-Admin-Token</span>
+              <input id="rui-token" class="rules-input" type="password" style="width:260px" aria-label="Admin token">
+              <button id="rui-reload" class="rules-btn" type="button">Reload</button>
+
+              <input id="f_offer" class="rules-input" placeholder="Filter: Offer ID" aria-label="Filter Offer ID">
+              <input id="f_aff"   class="rules-input" placeholder="Filter: Affiliate ID" aria-label="Filter Affiliate ID">
+              <input id="f_sub"   class="rules-input" placeholder="Filter: Sub ID of 'null'" aria-label="Filter Sub ID">
+              <input id="f_pri"   class="rules-input" placeholder="≤ Priority" type="number" min="0" aria-label="Max priority" style="width:110px">
+              <input id="f_q"     class="rules-input" placeholder="Zoek in omschrijving" aria-label="Zoek in omschrijving">
               <label style="display:flex;align-items:center;gap:8px;margin-left:4px">
-                <input id="f_active" type="checkbox" class="rui-chk"> Alleen actieve
+                <input id="f_active" type="checkbox" class="chk"> Alleen actieve
               </label>
             </div>
-            <div id="rui-groups"></div>
+            <div id="rui-groups" aria-live="polite"></div>
           </div>
         </div>
       `;
 
-      root.querySelector('#rui-token').value = (opts.token || '');
-      root.querySelector('#rui-reload').addEventListener('click', ()=> loadAll(cfg));
+      // token + persist
+      root.querySelector('#rui-token').value = cfg.token;
+      root.querySelector('#rui-token').addEventListener('change', (e)=>{
+        localStorage.setItem('rui_token', e.target.value.trim());
+      });
+      root.querySelector('#rui-reload').addEventListener('click', ()=> loadAll());
 
-      // filters -> hertekenen
+      // filters -> hertekenen (debounced + persist)
+      const debouncedApply = debounce(applyFilters, 160);
       ['f_offer','f_aff','f_sub','f_pri','f_q','f_active'].forEach(id=>{
-        root.querySelector('#'+id).addEventListener('input', ()=> applyFilters());
-        root.querySelector('#'+id).addEventListener('change', ()=> applyFilters());
+        const el = root.querySelector('#'+id);
+        const key = 'rui_'+id;
+        if(el.type === 'checkbox'){
+          el.checked = localStorage.getItem(key) === '1';
+        }else{
+          el.value = localStorage.getItem(key) ?? '';
+        }
+        el.addEventListener('input', ()=>{
+          if(el.type==='checkbox') localStorage.setItem(key, el.checked ? '1':'0');
+          else localStorage.setItem(key, el.value);
+          debouncedApply();
+        });
+        el.addEventListener('change', ()=>{
+          if(el.type==='checkbox') localStorage.setItem(key, el.checked ? '1':'0');
+          else localStorage.setItem(key, el.value);
+          debouncedApply();
+        });
       });
 
       // eerste load
-      loadAll(cfg);
+      loadAll();
+
+      /* ---------------- intern ---------------- */
+      function toast(msg, kind='ok'){
+        const host = document.getElementById('rules-toast');
+        const n = document.createElement('div');
+        n.textContent = msg;
+        n.style.cssText = `background:${kind==='ok'?'#10916f':'#d92d20'};color:#fff;padding:10px 12px;border-radius:10px;box-shadow:0 6px 20px rgb(2 6 23 / .12);font-size:14px`;
+        host.appendChild(n);
+        requestAnimationFrame(()=>{ n.style.transition='opacity .35s, transform .35s'; n.style.opacity='1'; n.style.transform='translateY(0)'; });
+        setTimeout(()=>{ n.style.opacity='0'; n.style.transform='translateY(6px)'; }, 2400);
+        setTimeout(()=>{ host.removeChild(n); }, 3000);
+      }
 
       function hdrs(){
         const t = root.querySelector('#rui-token').value.trim();
-        return { 'X-Admin-Token': t, 'Content-Type':'application/json' };
+        return { 'X-Admin-Token': t, 'Content-Type':'application/json', 'Accept':'application/json' };
       }
 
-      async function loadAll(cfg){
+      async function loadAll(){
         const host = root.querySelector('#rui-groups');
-        host.innerHTML = `<div class="rui-empty">Laden…</div>`;
+        host.innerHTML = `<div class="rules-empty">Laden…</div>`;
         try{
           const r = await fetch(cfg.apiRules, { headers: hdrs() });
-          if(!r.ok) throw new Error(r.status);
+          if(!r.ok) throw new Error(r.status+' '+r.statusText);
           const j = await r.json();
           const items = j.items || [];
 
-          // groepeer op offer (null/empty → '—')
           const groups = groupByOffer(items);
           host.innerHTML = '';
           Object.keys(groups).sort(offerSort).forEach(offerKey=>{
             host.appendChild(renderGroup(offerKey, groups[offerKey]));
           });
           if(!Object.keys(groups).length){
-            host.innerHTML = `<div class="rui-empty">Geen regels</div>`;
+            host.innerHTML = `<div class="rules-empty">Geen regels</div>`;
           }
           applyFilters();
         }catch(e){
-          host.innerHTML = `<div class="rui-empty rui--error">Error ${String(e)}</div>`;
+          host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${String(e.message||e)}</div>`;
         }
       }
 
@@ -82,12 +122,14 @@
         }
         return m;
       }
+
       function offerSort(a,b){
+        // ‘—’ (global) onderaan
         if(a==='—' && b!=='—') return 1;
         if(b==='—' && a!=='—') return -1;
         const na = Number(a), nb = Number(b);
         if(!Number.isNaN(na) && !Number.isNaN(nb)) return na-nb;
-        return String(a).localeCompare(String(b));
+        return String(a).localeCompare(String(b), 'nl');
       }
 
       function readDesc(it){
@@ -96,7 +138,7 @@
       function writeDesc(p){
         const d = p?.description ?? p?.Omschrijving ?? p?.omschrijving ?? p?.Beschrijving ?? p?.beschrijving ?? null;
         const out = {...p};
-        delete out.omschrijving; delete out.beschrijving; delete out.Beschrijving;
+        delete out.omschrijving; delete out.beschrijving; delete out.Beschrijving; delete out.Omschrijving;
         if(d!==null) out.description = d;
         return out;
       }
@@ -106,25 +148,25 @@
           const pa = Number(a.priority ?? 100), pb = Number(b.priority ?? 100);
           if(pa!==pb) return pa-pb;
           const aa = String(a.affiliate_id ?? ''), ab = String(b.affiliate_id ?? '');
-          if(aa!==ab) return aa.localeCompare(ab);
+          if(aa!==ab) return aa.localeCompare(ab, 'nl');
           const sa = String(a.sub_id ?? ''), sb = String(b.sub_id ?? '');
-          return sa.localeCompare(sb);
+          return sa.localeCompare(sb, 'nl');
         });
 
         const el = document.createElement('div');
-        el.className = 'rui-group rui--collapsed';
+        el.className = 'group collapsed';
         el.dataset.offer = offerKey;
 
         el.innerHTML = `
-          <div class="rui-group__header" data-role="toggle">
-            <span class="rui-chev">▸</span>
-            <span class="rui-group__title">Offer: ${offerKey==='—' ? '<i>ANY/Global</i>' : escapeHtml(offerKey)}</span>
-            <span class="rui-group__meta">${items.length} regel(s)</span>
+          <div class="group-header" data-role="toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="body-${cssId(offerKey)}">
+            <span class="chev">▸</span>
+            <span class="group-title">Offer: ${offerKey==='—' ? '<i>ANY/Global</i>' : escapeHtml(offerKey)}</span>
+            <span class="group-sub">${items.length} regel(s)</span>
           </div>
 
-          <div class="rui-group__body">
-            <div class="rui-table-wrap">
-              <table class="rui-table">
+          <div class="group-body" id="body-${cssId(offerKey)}">
+            <div class="table-wrap">
+              <table class="rules">
                 <thead>
                   <tr>
                     <th>Omschrijving</th>
@@ -142,51 +184,61 @@
               </table>
             </div>
 
-            <!-- Nieuwe regel op één rij -->
-            <div class="rui-newbar">
-              <div class="rui-newbar__scroll">
-                <div class="rui-newbar__row" data-offer="${escapeHtml(offerKey)}">
-                  <input class="rui-input"       type="text"   data-new="description"    placeholder="Omschrijving">
-                  <input class="rui-input"       type="text"   data-new="affiliate_id"   placeholder="Affiliate ID (leeg=any)">
-                  <input class="rui-input"       type="text"   data-new="sub_id"         placeholder="Sub ID (leeg of 'null')">
-                  <input class="rui-input rui-input--xs" type="number" data-new="percent_accept" placeholder="% Accept" value="50" min="0" max="100">
-                  <input class="rui-input rui-input--xs" type="number" data-new="priority"       placeholder="Priority" value="100">
-                  <label><input class="rui-chk" type="checkbox" data-new="active" checked> Active</label>
-                  <button class="rui-btn rui-btn--ok" data-role="add">Toevoegen</button>
+            <div class="newbar">
+              <div class="newbar__scroll">
+                <div class="newbar__row" data-offer="${escapeAttr(offerKey)}" style="display:flex;gap:8px;align-items:center;min-width:780px">
+                  <input class="rules-input w-desc" type="text"   data-new="description"    placeholder="Omschrijving">
+                  <input class="rules-input w-sm"  type="text"   data-new="affiliate_id"   placeholder="Affiliate ID (leeg=any)">
+                  <input class="rules-input w-sm"  type="text"   data-new="sub_id"         placeholder="Sub ID (leeg of 'null')">
+                  <input class="rules-input w-xs"  type="number" data-new="percent_accept" placeholder="% Accept" value="50" min="0" max="100">
+                  <input class="rules-input w-xs"  type="number" data-new="priority"       placeholder="Priority" value="100" min="0">
+                  <label><input class="chk" type="checkbox" data-new="active" checked> Active</label>
+                  <button class="rules-btn ok" data-role="add" type="button">Toevoegen</button>
                 </div>
               </div>
             </div>
+            <div class="hint">Tip: priority laag = sterk. “—” groep is global.</div>
           </div>
         `;
 
-        // open/close
-        el.querySelector('[data-role=toggle]').addEventListener('click', ()=> el.classList.toggle('rui--collapsed'));
+        // open/close + keyboard
+        const toggle = el.querySelector('[data-role=toggle]');
+        toggle.addEventListener('click', ()=> {
+          el.classList.toggle('collapsed');
+          const exp = !el.classList.contains('collapsed');
+          toggle.setAttribute('aria-expanded', String(exp));
+          el.querySelector('.chev').style.transform = exp ? 'rotate(90deg)' : 'rotate(0deg)';
+        });
+        toggle.addEventListener('keydown', (e)=>{
+          if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle.click(); }
+        });
 
         // opslaan/verwijderen
-        el.querySelector('tbody').addEventListener('click', (ev)=>{
+        el.querySelector('tbody').addEventListener('click', async (ev)=>{
           const btn = ev.target.closest('button[data-act]'); if(!btn) return;
           const tr  = btn.closest('tr'); const id = tr?.dataset?.id; if(!id) return;
 
           if(btn.dataset.act === 'delete'){
             if(!confirm('Deze regel verwijderen?')) return;
-            fetch(`${cfg.apiRules}/${id}`, { method:'DELETE', headers: hdrs() })
-              .then(r => r.status===204 ? location.reload() : r.text().then(t=>alert('Delete failed: '+t)))
-              .catch(e => alert('Delete failed: '+e));
-            return;
+            const r = await fetch(`${cfg.apiRules}/${encodeURIComponent(id)}`, { method:'DELETE', headers: hdrs() });
+            if(r.status===204){ tr.remove(); updateGroupMeta(el); toast('Verwijderd'); return; }
+            const t = await safeText(r); toast('Delete failed: '+(t||r.status), 'err'); return;
           }
 
           if(btn.dataset.act === 'save'){
             const payload = collectRow(tr);
             const body = writeDesc(payload);
-            fetch(`${cfg.apiRules}/${id}`, { method:'PATCH', headers: hdrs(), body: JSON.stringify(body) })
-              .then(r => r.ok ? location.reload() : r.text().then(t=>alert('Save failed: '+t)))
-              .catch(e => alert('Save failed: '+e));
+            const val = validateRow(body);
+            if(val!==true){ toast(val, 'err'); return; }
+            const r = await fetch(`${cfg.apiRules}/${encodeURIComponent(id)}`, { method:'PATCH', headers: hdrs(), body: JSON.stringify(body) });
+            if(r.ok){ toast('Opgeslagen'); return; }
+            const t = await safeText(r); toast('Save failed: '+(t||r.status), 'err');
           }
         });
 
-        // toevoegen (offer is vast: group key / ‘—’ → null)
-        el.querySelector('[data-role=add]').addEventListener('click', ()=>{
-          const row = el.querySelector('.rui-newbar__row');
+        // toevoegen (offer vast: group key / ‘—’ → null)
+        el.querySelector('[data-role=add]').addEventListener('click', async ()=>{
+          const row = el.querySelector('.newbar__row');
           const offerKeyHere = row.dataset.offer;
           const p = {
             description    : getNew(row,'description'),
@@ -198,31 +250,41 @@
             active         : row.querySelector('[data-new=active]').checked
           };
           const body = writeDesc(p);
-          fetch(cfg.apiRules, { method:'POST', headers: hdrs(), body: JSON.stringify(body) })
-            .then(async r=>{
-              if(r.ok){ location.reload(); return; }
-              const t = await r.text().catch(()=> ''); alert('Create failed: '+(t||r.status));
-            })
-            .catch(e=> alert('Create failed: '+e));
+          const val = validateRow(body);
+          if(val!==true){ toast(val, 'err'); return; }
+          const r = await fetch(cfg.apiRules, { method:'POST', headers: hdrs(), body: JSON.stringify(body) });
+          if(r.ok){
+            toast('Aangemaakt');
+            // opnieuw laden om rij te tonen (eenvoudig & robuust)
+            loadAll();
+            return;
+          }
+          const t = await safeText(r); toast('Create failed: '+(t||r.status), 'err');
         });
 
         return el;
       }
 
+      function updateGroupMeta(groupEl){
+        const rowsVisible = [...groupEl.querySelectorAll('tbody tr')].filter(tr=> tr.style.display !== 'none').length;
+        const meta = groupEl.querySelector('.group-sub');
+        if(meta) meta.textContent = `${rowsVisible} regel(s)`;
+        if(rowsVisible===0) groupEl.style.display='none';
+      }
+
       function rowHtml(it){
-        const esc = (s)=> (s ?? '').toString().replace(/"/g,'&quot;');
         const desc = readDesc(it);
         return `
-          <tr data-id="${it.id}">
-            <td><input type="text" value="${esc(desc)}" data-k="description"></td>
-            <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
-            <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
-            <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
-            <td><input type="number" value="${Number(it.priority ?? 100)}" data-k="priority"></td>
-            <td style="text-align:center"><input class="rui-chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active"></td>
-            <td class="rui-row-actions">
-              <button class="rui-btn rui-btn--ghost"  data-act="save"   type="button">Save</button>
-              <button class="rui-btn rui-btn--danger" data-act="delete" type="button">Del</button>
+          <tr data-id="${escapeAttr(it.id)}">
+            <td><input type="text" value="${escapeAttr(desc)}" data-k="description" aria-label="Omschrijving"></td>
+            <td><input type="text" value="${escapeAttr(it.affiliate_id ?? '')}" data-k="affiliate_id" aria-label="Affiliate ID"></td>
+            <td><input type="text" value="${escapeAttr(it.sub_id ?? '')}" data-k="sub_id" aria-label="Sub ID"></td>
+            <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept" aria-label="Percent accept"></td>
+            <td><input type="number" min="0" value="${Number(it.priority ?? 100)}" data-k="priority" aria-label="Priority"></td>
+            <td style="text-align:center"><input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active" aria-label="Active"></td>
+            <td class="row-actions">
+              <button class="rules-btn ghost"  data-act="save"   type="button">Save</button>
+              <button class="rules-btn danger" data-act="delete" type="button">Del</button>
             </td>
           </tr>
         `;
@@ -250,17 +312,13 @@
         const fQ     = (root.querySelector('#f_q').value || '').toLowerCase().trim();
         const onlyA  = root.querySelector('#f_active').checked;
 
-        root.querySelectorAll('.rui-group').forEach(group=>{
-          // start met zichtbaar
-          let visible = true;
-
-          // Offer filter (match op group-key)
+        root.querySelectorAll('.group').forEach(group=>{
+          let visibleGroup = true;
           if(fOffer){
             const key = group.dataset.offer || '';
-            if(!String(key).includes(fOffer)) visible = false;
+            if(!String(key).includes(fOffer)) visibleGroup = false;
           }
 
-          // Als group open is, filter op rijen; tel zichtbare rijen
           let rowsVisible = 0;
           group.querySelectorAll('tbody tr').forEach(tr=>{
             let rowOK = true;
@@ -284,19 +342,33 @@
             if(rowOK) rowsVisible++;
           });
 
-          // werk teller in header bij
-          group.querySelector('.rui-group__meta').textContent = `${rowsVisible} regel(s)`;
-
-          // als niets matcht, verberg hele group
-          group.style.display = (visible && rowsVisible>0) ? '' : 'none';
+          const meta = group.querySelector('.group-sub');
+          if(meta) meta.textContent = `${rowsVisible} regel(s)`;
+          group.style.display = (visibleGroup && rowsVisible>0) ? '' : 'none';
         });
       }
 
       // utils
       function emptyToNull(v){ return v==='' ? null : v; }
-      function normalizeSub(v){ return (v==='' || v==='null') ? null : v; }
+      function normalizeSub(v){ if(v===''||v==null) return null; return String(v).toLowerCase()==='null' ? null : v; }
       function getNew(rootEl, name){ return rootEl.querySelector(`[data-new="${name}"]`)?.value ?? ''; }
-      function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+      function escapeHtml(s){
+        const map = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+        return String(s).replace(/[&<>"']/g, ch => map[ch]);
+      }
+      function escapeAttr(s){ return escapeHtml(s); }
+      function cssId(s){ return String(s).replace(/\s+/g,'-').replace(/[^a-zA-Z0-9_-]/g,''); }
+      function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn.apply(null,args), ms); }; }
+      async function safeText(r){ try{ return await r.text(); }catch{ return ''; } }
+      function validateRow(p){
+        if(!p.description || !p.description.trim()) return 'Omschrijving is verplicht';
+        const pct = Number(p.percent_accept);
+        if(Number.isNaN(pct) || pct<0 || pct>100) return '% Accept moet 0–100 zijn';
+        const pri = Number(p.priority);
+        if(Number.isNaN(pri) || pri<0) return 'Priority moet ≥ 0 zijn';
+        return true;
+      }
     }
   };
 
