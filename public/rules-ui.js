@@ -101,14 +101,21 @@
           const items = j.items || [];
 
           const groups = groupByOffer(items);
-          host.innerHTML = '';
-          Object.keys(groups).sort(offerSort).forEach(offerKey=>{
-            host.appendChild(renderGroup(offerKey, groups[offerKey]));
-          });
-          if(!Object.keys(groups).length){
-            host.innerHTML = `<div class="rules-empty">Geen regels</div>`;
-          }
-          applyFilters();
+host.innerHTML = '';
+
+const keys = Object.keys(groups).sort(offerSort);
+keys.forEach(offerKey=>{
+  host.appendChild(renderGroup(offerKey, groups[offerKey]));
+});
+
+if(!keys.length){
+  host.innerHTML = `<div class="rules-empty">Geen regels</div>`;
+}
+
+// ⬇️ HIER 1.B toevoegen
+host.appendChild(renderNewOfferPanel());
+
+applyFilters();
         }catch(e){
           host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${String(e.message||e)}</div>`;
         }
