@@ -1,243 +1,63 @@
-(function(global){
-  const RulesUI = {
-    init(opts){
-      const cfg = {
-        mount: opts.mount || '#rules-app',
-        token: opts.token || '',
-        apiBase: (opts.apiBase || '').replace(/\/+$/,''),
-        // endpoints
-        apiRules: null,
-      };
-      cfg.apiRules = cfg.apiBase + '/rules';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+:root{
+  --bg:#f8fafc; --panel:#fff; --panel-2:#f1f5f9;
+  --text:#1e293b; --muted:#64748b;
+  --brand:#2563eb; --ok:#10916f; --danger:#d92d20;
+  --border:#e2e8f0; --thead:#e0e7ef;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0}
 
-      const root = document.querySelector(cfg.mount);
-      if(!root){ console.error('RulesUI: mount not found'); return; }
-      root.innerHTML = `
-        <div class="rules-wrap">
-          <div class="rules-card" id="rules-card">
-            <div class="rules-toolbar">
-              <div class="rules-label">Admin API • X-Admin-Token</div>
-              <input id="rui-token" class="rules-input" type="password" style="width:280px">
-              <button id="rui-reload" class="rules-btn">Reload</button>
-            </div>
-            <div id="rui-groups"></div>
-          </div>
-        </div>
-      `;
-      root.querySelector('#rui-token').value = cfg.token;
-      root.querySelector('#rui-reload').addEventListener('click', ()=> loadAll(cfg));
+.rules-wrap{max-width:1100px;margin:0 auto;padding:32px 24px 48px}
+.rules-card{background:var(--panel);border:1px solid var(--border);border-radius:18px;margin-bottom:24px}
+.rules-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:20px 24px;border-bottom:1px solid var(--border)}
+.rules-label{font-size:14px;color:var(--muted);font-weight:500;letter-spacing:.2px}
+.rules-input{background:var(--panel-2);border:1.5px solid var(--border);color:var(--text);border-radius:12px;height:44px;padding:0 16px;outline:none;font-size:16px;transition:border .15s,box-shadow .15s}
+.rules-input:focus{border-color:var(--brand);background:#fff}
+.rules-btn{height:44px;padding:0 28px;border-radius:12px;border:1.5px solid var(--brand);background:var(--brand);color:#fff;font-weight:600;font-size:16px;cursor:pointer;transition:filter .15s,border-width .15s}
+.rules-btn.ghost{background:#fff;color:var(--brand);border-color:var(--brand)}
+.rules-btn.ok{background:var(--ok);border-color:var(--ok)}
+.rules-btn.danger{background:var(--danger);border-color:var(--danger)}
+.rules-btn:hover,.rules-btn:focus{filter:brightness(1.07);border-width:2px}
 
-      // first load
-      loadAll(cfg);
+.group{border-top:1.5px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.group-header{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--thead);cursor:pointer;font-size:18px;font-weight:700;color:var(--text);border-bottom:1px solid var(--border)}
+.group-header:hover{filter:brightness(0.98)}
+.group-title{font-weight:700}
+.group-sub{color:var(--muted);font-size:14px;margin-left:auto}
+.chev{width:20px;height:20px;display:inline-block;transform:rotate(-90deg);transition:transform .15s}
+.group.collapsed .chev{transform:rotate(0)}
 
-      // Nieuw offer-paneel toevoegen altijd onderaan de rules-wrap, buiten de card
-      const rulesWrap = root.querySelector('.rules-wrap');
-      const newOfferPanel = renderNewOfferPanel(cfg);
-      rulesWrap.appendChild(newOfferPanel);
-    }
-  };
+.table-wrap{overflow-x:auto}
+table.rules{width:100%;border-collapse:separate;border-spacing:0;background:#fff;font-size:15.5px;margin:0}
+table.rules thead th,table.rules tbody td{padding-left:18px;padding-right:18px}
+table.rules thead th{position:sticky;top:0;background:var(--thead);color:var(--text);text-align:left;font-size:12px;letter-spacing:.3px;text-transform:uppercase;padding-top:12px;padding-bottom:12px;border-bottom:1.5px solid var(--border)}
+table.rules tbody td{padding-top:10px;padding-bottom:10px;border-bottom:1px solid var(--border);background:#fff;vertical-align:middle}
+table.rules tbody tr:nth-child(odd) td{background:#f5f8ff}
+table.rules tbody tr:hover td{background:#e8f0fe}
 
-  function hdrs(cfg){
-    const t = document.querySelector('#rui-token').value.trim();
-    return { 'X-Admin-Token': t, 'Content-Type':'application/json' };
-  }
+table.rules input[type=text],table.rules input[type=number]{
+  width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;height:36px;padding:0 10px;font-size:15px;outline:none
+}
+table.rules input:focus{border-color:var(--brand);background:#fff}
+.chk{width:20px;height:20px;vertical-align:middle}
+.row-actions{display:flex;gap:10px}
 
-  // ---------- description helpers (for backwards compatibility) ----------
-  const readDesc = (item)=> item?.description ?? item?.Omschrijving ?? item?.omschrijving ?? item?.Beschrijving ?? item?.beschrijving ?? '';
-  const writeDesc = (payload)=>{
-    const d = payload?.description ?? payload?.Omschrijving ?? payload?.omschrijving ?? payload?.Beschrijving ?? payload?.beschrijving ?? null;
-    const out = {...payload};
-    delete out.description; delete out.omschrijving; delete out.beschrijving; delete out.Beschrijving;
-    if(d!==null) out.description = d; // schrijf expliciet als 'description' (jouw API ondersteunt dit)
-    return out;
-  };
+.group-body{padding:0 18px 16px;display:none}
+.group:not(.collapsed) .group-body{display:block}
 
-  async function loadAll(cfg){
-    const host = document.querySelector('#rui-groups');
-    host.innerHTML = `<div class="rules-empty">Laden…</div>`;
-    try{
-      const r = await fetch(cfg.apiRules, { headers: hdrs(cfg) });
-      if(!r.ok) throw new Error(r.status);
-      const j = await r.json();
-      const items = j.items || [];
+.newbar{padding:14px 18px;border-top:1px dashed var(--border);display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:var(--panel-2)}
+.newbar .w-lg{min-width:240px}
+.newbar .w-sm{min-width:160px}
+.newbar .w-xs{width:100px}
 
-      // group by offer_id (incl. null/empty = "ANY/Global")
-      const groups = groupByOffer(items);
+.hint{margin:10px 18px 16px;color:var(--muted);font-size:13px}
+.rules-empty{padding:26px;color:var(--muted);text-align:center;font-size:18px}
 
-      host.innerHTML = '';
-      Object.keys(groups).sort(offerSort).forEach(offerKey=>{
-        const groupItems = groups[offerKey];
-        host.appendChild(renderGroup(cfg, offerKey, groupItems));
-      });
-
-      if(!Object.keys(groups).length){
-        host.innerHTML = `<div class="rules-empty">Geen regels</div>`;
-      }
-    }catch(e){
-      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${String(e)}</div>`;
-    }
-  }
-
-  function groupByOffer(items){
-    const m = {};
-    for(const it of items){
-      // normaliseer keys
-      const offer = (it.offer_id===''||it.offer_id==null) ? '—' : String(it.offer_id);
-      if(!m[offer]) m[offer] = [];
-      m[offer].push(it);
-    }
-    return m;
-  }
-  function offerSort(a,b){
-    // '—' (geen offer_id) achteraan
-    if(a==='—' && b!=='—') return 1;
-    if(b==='—' && a!=='—') return -1;
-    // numeriek wanneer mogelijk
-    const na = Number(a), nb = Number(b);
-    if(!isNaN(na) && !isNaN(nb)) return na-nb;
-    return String(a).localeCompare(String(b));
-  }
-
-  function renderGroup(cfg, offerKey, items){
-    // split hoofdregels vs affiliate/sub regels? In jouw wens tonen we ALLES onder offer
-    // sorteer: priority asc (sterkst eerst), dan affiliate_id, sub_id
-    items.sort((a,b)=>{
-      const pa = Number(a.priority ?? 100), pb = Number(b.priority ?? 100);
-      if(pa!==pb) return pa-pb;
-      const aa = String(a.affiliate_id ?? ''), ab = String(b.affiliate_id ?? '');
-      if(aa!==ab) return aa.localeCompare(ab);
-      const sa = String(a.sub_id ?? ''), sb = String(b.sub_id ?? '');
-      return sa.localeCompare(sb);
-    });
-
-    const el = document.createElement('div');
-    el.className = 'group collapsed';
-    el.innerHTML = `
-      <div class="group-header" data-role="toggle">
-        <span class="chev">▸</span>
-        <span class="group-title">Offer: ${offerKey==='—' ? '<i>ANY/Global</i>' : escapeHtml(offerKey)}</span>
-        <span class="group-sub">${items.length} regel(s)</span>
-      </div>
-      <div class="group-body">
-        <div class="table-wrap">
-          <table class="rules">
-            <thead>
-              <tr>
-                <th>Omschrijving</th>
-                <th>Affiliate ID</th>
-                <th>Sub ID</th>
-                <th>% Accept</th>
-                <th>Priority</th>
-                <th>Active</th>
-                <th style="width:160px">Actie</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items.map(rowHtml).join('')}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="newbar">
-          <input class="rules-input w-lg"       type="text"   data-new="description"    placeholder="Omschrijving">
-          <input class="rules-input w-sm"       type="text"   data-new="affiliate_id"   placeholder="Affiliate ID (leeg=any)">
-          <input class="rules-input w-sm"       type="text"   data-new="sub_id"         placeholder="Sub ID (leeg of 'null')">
-          <input class="rules-input w-xs"       type="number" data-new="percent_accept" placeholder="% Accept" value="50" min="0" max="100">
-          <input class="rules-input w-xs"       type="number" data-new="priority"       placeholder="Priority" value="100">
-          <label><input class="chk" type="checkbox" data-new="active" checked> Active</label>
-          <button class="rules-btn ok" data-role="add">Toevoegen</button>
-        </div>
-        <div class="hint">Tip: “Sub ID = <b>null</b>” target expliciet “geen sub”. Laat Affiliate leeg voor generiek binnen dit offer. Laat offer leeg via de groep “ANY/Global”.</div>
-      </div>
-    `;
-
-    // events
-    el.querySelector('[data-role=toggle]').addEventListener('click', ()=> el.classList.toggle('collapsed'));
-    el.querySelector('tbody').addEventListener('click', (ev)=>{
-      const btn = ev.target.closest('button[data-act]'); if(!btn) return;
-      const tr  = btn.closest('tr'); const id = tr?.dataset?.id;
-      if(!id) return;
-
-      if(btn.dataset.act==='delete'){
-        if(!confirm('Deze regel verwijderen?')) return;
-        fetch(`${cfg.apiRules}/${id}`, { method:'DELETE', headers: hdrs(cfg) })
-          .then(r => r.status===204 ? location.reload() : r.text().then(t=>alert('Delete failed: '+t)))
-          .catch(e => alert('Delete failed: '+e));
-        return;
-      }
-
-      if(btn.dataset.act==='save'){
-        const payload = collectRow(tr);
-        const body = writeDesc(payload);
-        fetch(`${cfg.apiRules}/${id}`, { method:'PATCH', headers: hdrs(cfg), body: JSON.stringify(body) })
-          .then(r => r.ok ? location.reload() : r.text().then(t=>alert('Save failed: '+t)))
-          .catch(e => alert('Save failed: '+e));
-      }
-    });
-
-    // toevoegen binnen group (offer staat vast op group)
-    el.querySelector('[data-role=add]').addEventListener('click', ()=>{
-      const bar = el.querySelector('.newbar');
-      const p = {
-        description: val(bar,'description'),
-        affiliate_id: emptyToNull(val(bar,'affiliate_id')),
-        offer_id: (offerKey==='—' ? null : offerKey),
-        sub_id: normalizeSub(val(bar,'sub_id')),
-        percent_accept: Number(val(bar,'percent_accept')||0),
-        priority: Number(val(bar,'priority')||100),
-        active: !!bar.querySelector('[data-new=active]').checked
-      };
-      const body = writeDesc(p);
-      fetch(`${cfg.apiRules}`, { method:'POST', headers: hdrs(cfg), body: JSON.stringify(body) })
-        .then(async r=>{
-          if(r.ok){ location.reload(); return; }
-          const t = await r.text().catch(()=> ''); alert('Create failed: '+(t||r.status));
-        })
-        .catch(e=> alert('Create failed: '+e));
-    });
-
-    return el;
-  }
-
-  function rowHtml(it){
-    const esc = (s)=> (s ?? '').toString().replace(/"/g, '&quot;');
-    const desc = readDesc(it);
-    return `
-      <tr data-id="${it.id}">
-        <td><input type="text" value="${esc(desc)}" data-k="description"></td>
-        <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
-        <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
-        <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
-        <td><input type="number" value="${Number(it.priority ?? 100)}" data-k="priority"></td>
-        <td style="text-align:center"><input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active"></td>
-        <td class="row-actions">
-          <button class="rules-btn ghost" data-act="save" type="button">Save</button>
-          <button class="rules-btn danger" data-act="delete" type="button">Del</button>
-        </td>
-      </tr>
-    `;
-  }
-
-  function collectRow(tr){
-    const q = (sel)=> tr.querySelector(sel);
-    const get = (k)=> q(`input[data-k="${k}"]`);
-    const payload = {
-      description: get('description').value,
-      affiliate_id: emptyToNull(get('affiliate_id').value),
-      sub_id: normalizeSub(get('sub_id').value),
-      percent_accept: Number(get('percent_accept').value || 0),
-      priority: Number(get('priority').value || 100),
-      active: q('input[data-k="active"]').checked
-    };
-    return payload;
-  }
-
-  // utils
-  const emptyToNull = (v)=> (v==='' ? null : v);
-  const normalizeSub = (v)=> (v==='' ? null : (v==='null' ? null : v));
-  const val = (root, name)=> (root.querySelector(`[data-new="${name}"]`)?.value ?? '');
-  const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-
-  // expose
-  global.RulesUI = RulesUI;
-})(window);
+@media (max-width:700px){
+  .rules-wrap{padding:12px}
+  .rules-toolbar{padding:14px;gap:10px}
+  .group-header{padding:12px 14px;font-size:16px}
+  .group-body,.newbar,.hint{padding-left:10px;padding-right:10px}
+}
