@@ -1,132 +1,129 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-/* Theme */
 :root{
   --bg:#f8fafc;
-  --panel:#ffffff;
+  --panel:#fff;
   --panel-2:#f1f5f9;
-  --text:#0f172a;
+  --text:#1e293b;
   --muted:#64748b;
   --brand:#2563eb;
   --ok:#10916f;
   --danger:#d92d20;
   --border:#e2e8f0;
-  --thead:#eaf1ff;
-  --zebra:#f6f9ff;
-  --hover:#eef4ff;
-  --chip:#eaf2ff;
+  --thead:#e9eef6;
 }
 
 *{box-sizing:border-box}
-html,body{height:100%}
 body{
-  margin:0;
-  font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
   background:var(--bg);
+  color:var(--text);
+  margin:0;
 }
 
-.rules-wrap{max-width:1100px;margin:0 auto;padding:32px 20px 48px}
-.rules-title{display:flex;align-items:center;gap:10px;margin:0 0 14px}
-.rules-title h1{font-size:28px;font-weight:800;margin:0}
-.rules-sub{color:var(--muted);margin:0 0 22px}
-
-/* Card */
+/* ---------- container / card ---------- */
+.rules-wrap{max-width:1100px;margin:0 auto;padding:32px 24px 48px}
 .rules-card{
   background:var(--panel);
   border:1px solid var(--border);
-  border-radius:16px;
+  border-radius:18px;
   margin-bottom:24px;
-  box-shadow:0 8px 20px rgba(16,24,40,.04);
 }
 
-/* Toolbar */
+/* ---------- toolbar (token + filters) ---------- */
 .rules-toolbar{
-  display:flex;flex-wrap:wrap;align-items:center;gap:12px;
-  padding:18px 18px;border-bottom:1px solid var(--border)
+  padding:20px 24px 12px;
+  display:flex;flex-wrap:wrap;gap:12px;align-items:center;
+  border-bottom:1px solid var(--border);
 }
-.rules-label{font-size:14px;color:var(--muted)}
+.rules-label{font-size:14px;color:var(--muted);font-weight:600;letter-spacing:.2px}
+
 .rules-input{
-  background:var(--panel-2); border:1.5px solid var(--border); color:var(--text);
-  border-radius:10px; height:40px; padding:0 12px; outline:none; font-size:15px;
-  transition:border .15s, box-shadow .15s, background .15s
+  background:var(--panel-2);
+  border:1.5px solid var(--border);
+  color:var(--text);
+  border-radius:12px;
+  height:42px;
+  padding:0 14px;
+  outline:none;
+  font-size:15px;
+  transition:border .15s, box-shadow .15s, background .15s;
 }
-.rules-input:focus{border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.16); background:#fff}
+.rules-input:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 
 .rules-btn{
-  height:40px; padding:0 16px; border-radius:10px; border:1.5px solid var(--brand);
-  background:var(--brand); color:#fff; font-weight:600; font-size:15px; cursor:pointer;
-  transition:filter .15s, transform .02s; will-change:filter
+  height:42px;padding:0 22px;border-radius:12px;border:1.5px solid var(--brand);
+  background:var(--brand);color:#fff;font-weight:700;font-size:15px;cursor:pointer;
 }
-.rules-btn:hover{filter:brightness(1.06)}
-.rules-btn:active{transform:translateY(1px)}
-.rules-btn.ghost{background:#fff;color:var(--brand);border-color:var(--brand)}
+.rules-btn.ghost{background:#fff;color:var(--brand)}
 .rules-btn.ok{background:var(--ok);border-color:var(--ok)}
 .rules-btn.danger{background:var(--danger);border-color:var(--danger)}
+.rules-btn:hover{filter:brightness(1.07)}
 
-/* Groups */
-.group{border-top:1px solid var(--border)}
-.group:first-child{border-top:none}
-.group-header{
-  display:flex;align-items:center;gap:10px; padding:14px 16px; background:var(--thead);
-  cursor:pointer; user-select:none; border-bottom:1px solid var(--border)
+/* ---------- filterbar ---------- */
+.filters{
+  width:100%;
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr 130px 160px 160px;
+  gap:10px;
+  padding:0 24px 16px;
 }
-.group-title{font-weight:700}
-.group-sub{color:var(--muted); margin-left:auto; font-size:14px}
-.chev{display:inline-block; width:18px; transform:rotate(-90deg); transition:transform .15s}
+.filters .rules-input{height:40px}
+.filters .rules-switch{
+  display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px
+}
+
+/* ---------- groups (per offer) ---------- */
+.group{border-top:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px}
+.group-header{
+  display:flex;align-items:center;gap:12px;cursor:pointer;
+  background:var(--thead);
+  padding:18px 24px 16px;   /* extra top-ruimte */
+  border-bottom:1px solid var(--border);
+}
+.group-title{font-weight:800;color:var(--text);font-size:18px}
+.group-sub{margin-left:auto;color:var(--muted);font-size:14px}
+.chev{width:18px;height:18px;display:inline-block;transform:rotate(-90deg);transition:transform .15s}
 .group.collapsed .chev{transform:rotate(0deg)}
 
-.group-body{display:none; padding:0 12px 14px}
+.group-body{display:none;padding:0 0 14px}
 .group:not(.collapsed) .group-body{display:block}
 
-/* Table */
-.table-wrap{overflow:auto}
-table.rules{width:100%; border-collapse:separate; border-spacing:0; background:#fff; font-size:15px}
+/* ---------- table ---------- */
+.table-wrap{overflow-x:auto}
+table.rules{width:100%;border-collapse:separate;border-spacing:0;background:#fff}
+table.rules thead th, table.rules tbody td{padding:12px 24px}
 table.rules thead th{
-  position:sticky; top:0; z-index:1; background:var(--thead); color:var(--text);
-  text-align:left; font-size:12px; letter-spacing:.3px; text-transform:uppercase;
-  padding:12px 12px; border-bottom:1px solid var(--border)
+  position:sticky;top:0;background:var(--thead);color:var(--text);
+  text-align:left;font-size:13px;letter-spacing:.3px;text-transform:uppercase;
+  border-bottom:1.5px solid var(--border);white-space:nowrap;line-height:1;  /* 1 regel, strak */
 }
-table.rules tbody td{
-  padding:10px 12px; border-bottom:1px solid var(--border); background:#fff
-}
-table.rules tbody tr:nth-child(odd) td{background:var(--zebra)}
-table.rules tbody tr:hover td{background:var(--hover)}
+table.rules tbody td{border-bottom:1px solid var(--border);background:#fff}
+table.rules tbody tr:nth-child(odd) td{background:#f6f9ff}
+table.rules tbody tr:hover td{background:#edf4ff}
 
-table.rules input[type=text],
-table.rules input[type=number]{
-  width:100%; background:#fff; border:1.5px solid var(--border); border-radius:8px;
-  height:36px; padding:0 10px; font-size:14px
+table.rules input[type=text], table.rules input[type=number]{
+  width:100%;background:#fff;border:1.4px solid var(--border);border-radius:8px;height:36px;padding:0 10px;font-size:15px
 }
-.chk{width:18px;height:18px;vertical-align:middle}
-.row-actions{display:flex;gap:8px}
+.chk{width:20px;height:20px;vertical-align:middle}
+.row-actions{display:flex;gap:10px}
 
-/* Inline add-bar per offer */
+/* ---------- “nieuwe regel” bar (one-liner) ---------- */
 .newbar{
-  margin-top:10px; padding:12px; background:var(--panel-2); border:1px dashed var(--border);
-  border-radius:12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center
+  display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
+  padding:12px 24px;border-top:1px dashed var(--border);background:var(--panel-2);
+  overflow:auto; /* horizontaal scrollen op smal ipv wrap */
 }
+.newbar .rules-input{height:38px}
 .newbar .w-lg{min-width:240px}
 .newbar .w-sm{min-width:160px}
-.newbar .w-xs{width:94px}
+.newbar .w-xs{width:100px}
 
-/* Panel onderaan voor “Nieuwe offer-regel” */
-.new-offer-panel{
-  margin:18px 0 0; background:var(--panel-2); border:1px solid var(--border); border-radius:16px;
-  padding:18px; display:flex; flex-wrap:wrap; gap:12px; align-items:end
-}
-.new-offer-panel h3{flex-basis:100%; margin:0 0 4px 0; font-size:18px; color:var(--brand)}
-.new-offer-panel label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
-.new-offer-panel .field{min-width:160px}
-.new-offer-panel .field input{width:100%}
+/* lege staat */
+.rules-empty{padding:26px;color:var(--muted);text-align:center;font-size:16px}
 
-/* Empty */
-.rules-empty{padding:24px; text-align:center; color:var(--muted)}
-
-/* Responsive */
-@media (max-width: 800px){
-  .rules-wrap{padding:16px 12px 36px}
-  .rules-toolbar{padding:12px}
-  .group-header{padding:12px}
-  table.rules thead th, table.rules tbody td{padding-left:10px; padding-right:10px}
+/* responsive */
+@media (max-width: 900px){
+  .filters{grid-template-columns:1fr 1fr;gap:8px}
+  .newbar{flex-wrap:wrap}
 }
