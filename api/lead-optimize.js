@@ -1,14 +1,15 @@
-// pages/api/lead-optimize.js
-const DIRECTUS_URL = process.env.DIRECTUS_URL;
-const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
-const HASH_SECRET = process.env.HASH_SECRET || 'change-me';
+// /pages/api/lead-optimize.js
+
+const DIRECTUS_URL        = process.env.DIRECTUS_URL;
+const DIRECTUS_TOKEN      = process.env.DIRECTUS_TOKEN;
+const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
-const COLLECTION = process.env.DIRECTUS_COLLECTION || 'Optimization_rules'; // let op: hoofdletter O
+const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules'; // let op: hoofdletter O
 
 function dfetch(path, init = {}) {
   if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
     const miss = [];
-    if (!DIRECTUS_URL) miss.push('DIRECTUS_URL');
+    if (!DIRECTUS_URL)  miss.push('DIRECTUS_URL');
     if (!DIRECTUS_TOKEN) miss.push('DIRECTUS_TOKEN');
     throw new Error(`Missing env var(s): ${miss.join(', ')}`);
   }
@@ -27,17 +28,18 @@ async function hashToPercent(input) {
   const data = new TextEncoder().encode(input);
   const buf = await crypto.subtle.digest('SHA-256', data);
   const b = new Uint8Array(buf);
+  // neem de eerste 4 bytes als unsigned int
   const n = ((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0;
   return n % 100; // 0..99
 }
 
 /** Eén query die een set filters o.b.v. specificiteit ophaalt en
- *  direct de beste ( hoogste specificiteit binnen deze trede en laagste priority ) teruggeeft. */
+ *  direct de beste (laagste priority) teruggeeft. */
 async function fetchOneRuleWithPriority({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*');
-  p.append('limit', '50');           // we sorteren zelf nog even extra
-  p.append('sort[]', 'priority');    // laagste priority (sterkst) eerst
+  p.append('limit', '50');           // veiligheidsmarge
+  p.append('sort[]', 'priority');    // laagste priority eerst
   p.append('filter[_and][0][active][_eq]', 'true');
 
   // affiliate
@@ -56,11 +58,10 @@ async function fetchOneRuleWithPriority({ affiliate_id, offer_id, sub_id }) {
   if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
   const j = await r.json();
   const rows = Array.isArray(j?.data) ? j.data : [];
-  // Server sorteert al op priority asc; neem de eerste als beste binnen deze trede
-  return rows[0] || null;
+  return rows[0] || null; // server sorteert al op priority asc; neem de eerste
 }
 
-/** Nieuwe cascade:
+/** Cascade:
  *  1) sub-exact (affiliate+offer+sub)
  *  2) combo (affiliate+offer, sub=null)
  *  3) affiliate-only (offer=null, sub=null)
@@ -73,39 +74,36 @@ async function findRule({ affiliate_id, offer_id, sub_id }) {
   const off = N(offer_id);
   const sub = N(sub_id);
 
-  let rule, level;
+  let rule;
 
-  // 1) sub-exact
   rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: sub });
   if (rule) return { rule, level: 'sub-exact' };
 
-  // 2) combo
   rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: null });
   if (rule) return { rule, level: 'combo-aff+offer' };
 
-  // 3) affiliate-only
   rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: null, sub_id: null });
   if (rule) return { rule, level: 'affiliate-only' };
 
-  // 4) offer-only
   rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: off, sub_id: null });
   if (rule) return { rule, level: 'offer-only' };
 
-  // 5) global
   rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: null, sub_id: null });
   if (rule) return { rule, level: 'global' };
 
   return { rule: null, level: null };
 }
 
-// === counters (ongewijzigd) ===
-async function getCounters({ date, affiliate_id, offer_id, sub_id }) {
+/* ===== Counters (nu ook met rule_id) ===== */
+
+async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
   const filter = {
     _and: [
       { date: { _eq: date } },
       { affiliate_id: { _eq: String(affiliate_id) } },
       { offer_id: { _eq: String(offer_id) } },
       sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
+      rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } }, // ← nieuw
     ],
   };
   const qs = new URLSearchParams({
@@ -120,8 +118,8 @@ async function getCounters({ date, affiliate_id, offer_id, sub_id }) {
   return { id: row?.id, total: row?.total_leads ?? 0, accepted: row?.accepted_leads ?? 0 };
 }
 
-async function incCounters({ date, affiliate_id, offer_id, sub_id, addTotal, addAccepted }) {
-  const cur = await getCounters({ date, affiliate_id, offer_id, sub_id });
+async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addTotal, addAccepted }) {
+  const cur = await getCounters({ date, affiliate_id, offer_id, sub_id, rule_id });
   if (!cur.id) {
     const res = await dfetch('/items/Optimization_counters', {
       method: 'POST',
@@ -130,6 +128,7 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, addTotal, add
         affiliate_id: String(affiliate_id),
         offer_id: String(offer_id),
         sub_id: sub_id == null ? null : String(sub_id),
+        rule_id: rule_id == null ? null : String(rule_id),  // ← nieuw
         total_leads: addTotal,
         accepted_leads: addAccepted,
       }),
@@ -148,7 +147,7 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, addTotal, add
 }
 
 async function postbackToAffise(clickid) {
-  if (!AFFISE_POSTBACK_URL) throw new Error('AFFISE_POSTBACK_URL missing');
+  if (!AFFISE_POSTBACK_URL) return false; // optioneel
   if (!clickid) throw new Error('clickid missing');
   const url = new URL(AFFISE_POSTBACK_URL);
   url.searchParams.set('clickid', String(clickid));
@@ -157,17 +156,26 @@ async function postbackToAffise(clickid) {
   return true;
 }
 
+/* ===== Handler ===== */
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'Method not allowed' });
 
   try {
+    if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
+      const miss = [];
+      if (!DIRECTUS_URL)  miss.push('DIRECTUS_URL');
+      if (!DIRECTUS_TOKEN) miss.push('DIRECTUS_TOKEN');
+      return res.status(500).json({ ok:false, error:`Missing env var(s): ${miss.join(', ')}` });
+    }
+
     const p = req.body || {};
     const lead = {
-      lead_id: String(p.lead_id || p.id || ''),
+      lead_id     : String(p.lead_id || p.id || ''),
       affiliate_id: String(p.affiliate_id || p.aff_id || ''),
-      offer_id: String(p.offer_id || p.offer || ''),
-      sub_id: (p.sub_id === undefined || p.sub_id === null || p.sub_id === '') ? null : String(p.sub_id),
-      clickid: p.clickid || p.click_id || p.transaction_id || '',
+      offer_id    : String(p.offer_id || p.offer || ''),
+      sub_id      : (p.sub_id === undefined || p.sub_id === null || p.sub_id === '') ? null : String(p.sub_id),
+      clickid     : p.clickid || p.click_id || p.transaction_id || '',
     };
     if (!lead.lead_id || !lead.affiliate_id || !lead.offer_id) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
@@ -183,7 +191,8 @@ export default async function handler(req, res) {
         date: todayISO(),
         affiliate_id: lead.affiliate_id,
         offer_id: lead.offer_id,
-        sub_id: lead.sub_id
+        sub_id: lead.sub_id,
+        rule_id: rule.id, // ← belangrijk
       });
       if (accepted >= Number(rule.cap_per_day)) {
         await incCounters({
@@ -191,10 +200,15 @@ export default async function handler(req, res) {
           affiliate_id: lead.affiliate_id,
           offer_id: lead.offer_id,
           sub_id: lead.sub_id,
+          rule_id: rule.id, // ← belangrijk
           addTotal: 1,
           addAccepted: 0
         });
-        return res.status(200).json({ ok:true, decision:'reject', reason:'daily-cap', rule_level: level });
+        return res.status(200).json({
+          ok:true, decision:'reject', reason:'daily-cap', rule_level: level, rule: {
+            id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
+          }
+        });
       }
     }
 
@@ -210,6 +224,7 @@ export default async function handler(req, res) {
       affiliate_id: lead.affiliate_id,
       offer_id: lead.offer_id,
       sub_id: lead.sub_id,
+      rule_id: rule.id,               // ← belangrijk
       addTotal: 1,
       addAccepted: accept ? 1 : 0,
     });
@@ -217,13 +232,14 @@ export default async function handler(req, res) {
     // 5) Postback bij accept
     if (accept) {
       try {
-        await postbackToAffise(lead.clickid);
+        const forwarded = await postbackToAffise(lead.clickid);
         return res.status(200).json({
-          ok:true, decision:'accept', forwarded:true, rule_level: level, rule: {
+          ok:true, decision:'accept', forwarded, rule_level: level, rule: {
             id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
           }
         });
       } catch (e) {
+        // Accept maar postback faalde
         return res.status(200).json({
           ok:true, decision:'accept', forwarded:false, error:String(e), rule_level: level, rule: {
             id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
