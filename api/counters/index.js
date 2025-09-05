@@ -3,11 +3,24 @@ const DIRECTUS_URL   = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 
-// CORS
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*'); // of jouw domein
+// CORS – gelijk trekken met /api/rules
+function parseAllowed() {
+  return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+function applyCors(req, res) {
+  const allowed = parseAllowed();
+  const origin = req.headers.origin;
+  if (origin && (allowed.includes('*') || allowed.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token');
+  if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
+  return false;
 }
 
 function dFetch(path, init = {}) {
@@ -21,10 +34,9 @@ function dFetch(path, init = {}) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (applyCors(req, res)) return;
 
-  // simpele admin check (zelfde als bij /api/rules)
+  // admin check (zelfde als /api/rules)
   const hdr = req.headers['x-admin-token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
     return res.status(403).json({ ok:false, error:'forbidden' });
@@ -35,36 +47,44 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Query params
+    // Query params (alias 'from'/'to' voor backwards compat)
     const {
-      date_from,
-      date_to,
+      date_from, from,
+      date_to,   to,
       affiliate_id,
       offer_id,
-      sub_id, // 'null' betekent expliciet null
+      sub_id,     // 'null' => expliciet null
+      rule_id,    // NIEUW: filter per rule
       limit = '500',
+      sort = '-date', // default: nieuwste boven
     } = req.query;
 
-    // Directus filter opbouwen
     const AND = [];
 
-    if (date_from || date_to) {
+    const df = date_from || from;
+    const dt = date_to   || to;
+    if (df || dt) {
       const range = {};
-      if (date_from) range._gte = String(date_from);
-      if (date_to)   range._lte = String(date_to);
+      if (df) range._gte = String(df);
+      if (dt) range._lte = String(dt);
       AND.push({ date: range });
     }
+
     if (affiliate_id) AND.push({ affiliate_id: { _eq: String(affiliate_id) } });
     if (offer_id)     AND.push({ offer_id:     { _eq: String(offer_id) } });
 
     if (sub_id === 'null') AND.push({ sub_id: { _null: true } });
     else if (sub_id)       AND.push({ sub_id: { _eq: String(sub_id) } });
 
+    if (rule_id === 'null') AND.push({ rule_id: { _null: true } });
+    else if (rule_id)       AND.push({ rule_id: { _eq: String(rule_id) } });
+
     const filter = AND.length ? { _and: AND } : {};
 
     const qs = new URLSearchParams({
-      fields: 'id,date,affiliate_id,offer_id,sub_id,total_leads,accepted_leads',
-      sort: '-date',
+      // Neem rule_id erbij (NIEUW)
+      fields: 'id,date,rule_id,affiliate_id,offer_id,sub_id,total_leads,accepted_leads',
+      sort: String(sort),
       limit: String(limit),
       filter: JSON.stringify(filter),
     });
