@@ -31,8 +31,7 @@
               <input id="f_offer" class="rules-input" placeholder="Filter: Offer ID" aria-label="Filter Offer ID">
               <input id="f_aff"   class="rules-input" placeholder="Filter: Affiliate ID" aria-label="Filter Affiliate ID">
               <input id="f_sub"   class="rules-input" placeholder="Filter: Sub ID of 'null'" aria-label="Filter Sub ID">
-              <input id="f_pri"   class="rules-input" placeholder="≤ Priority (legacy)" type="number" min="0" aria-label="Max priority" style="width:160px">
-              <input id="f_q"     class="rules-input" placeholder="Zoek in omschrijving" aria-label="Zoek in omschrijving">
+              <input id="f_q"     class="rules-input" placeholder="Zoek in omschrijving" aria-label="Zoek in omschrijving" style="min-width:260px">
               <label style="display:flex;align-items:center;gap:8px;margin-left:4px">
                 <input id="f_active" type="checkbox" class="chk"> Alleen actieve
               </label>
@@ -42,15 +41,16 @@
         </div>
       `;
 
+      // token persist
       root.querySelector('#rui-token').value = cfg.token;
       root.querySelector('#rui-token').addEventListener('change', (e)=>{
         localStorage.setItem('rui_token', e.target.value.trim());
       });
       root.querySelector('#rui-reload').addEventListener('click', ()=> loadAll());
 
-      // filters (debounced + persist)
+      // filters (debounced + persist) — zonder priority
       const debouncedApply = debounce(applyFilters, 160);
-      ['f_offer','f_aff','f_sub','f_pri','f_q','f_active'].forEach(id=>{
+      ['f_offer','f_aff','f_sub','f_q','f_active'].forEach(id=>{
         const el = root.querySelector('#'+id);
         const key = 'rui_'+id;
         if(el.type === 'checkbox'){
@@ -70,6 +70,7 @@
         });
       });
 
+      // eerste load
       loadAll();
 
       /* ---------------- intern ---------------- */
@@ -97,6 +98,7 @@
           const j = await r.json();
           const items = j.items || [];
 
+          // groepeer op offer (null/empty → '—')
           const groups = groupByOffer(items);
           host.innerHTML = '';
           Object.keys(groups).sort(offerSort).forEach(offerKey=>{
@@ -139,7 +141,7 @@
       }
 
       function renderGroup(offerKey, items){
-        // sorteer puur op affiliate/sub (priority is legacy/visueel)
+        // sorteer op affiliate/sub (priority bestaat niet meer in UI)
         items.sort((a,b)=>{
           const aa = String(a.affiliate_id ?? ''), ab = String(b.affiliate_id ?? '');
           if(aa!==ab) return aa.localeCompare(ab);
@@ -152,14 +154,14 @@
         el.dataset.offer = offerKey;
 
         el.innerHTML = `
-          <div class="group-header" data-role="toggle">
+          <div class="group-header" data-role="toggle" role="button" tabindex="0" aria-expanded="false">
             <span class="chev">▸</span>
             <span class="group-title">Offer: ${offerKey==='—' ? '<i>ANY/Global</i>' : escapeHtml(offerKey)}</span>
             <span class="group-sub">${items.length} regel(s)</span>
           </div>
 
           <div class="group-body">
-            <div class="hint">Selectie van regels gebeurt automatisch op <b>meeste overeenkomende velden</b> (affiliate / offer / sub). <i>Priority</i> wordt <b>genegeerd</b>.</div>
+            <div class="hint">Selectie van regels gebeurt automatisch op <b>meeste overeenkomende velden</b> (affiliate / offer / sub). <br>Er is <b>geen priority</b> meer in gebruik.</div>
             <div class="table-wrap">
               <table class="rules">
                 <thead>
@@ -168,8 +170,7 @@
                     <th>Affiliate ID</th>
                     <th>Sub ID</th>
                     <th>Offer ID</th>
-                    <th> % Accept (config) </th>
-                    <th>Priority <span style="color:var(--muted)">(niet gebruikt)</span></th>
+                    <th>% Accept (config)</th>
                     <th>Active</th>
                     <th style="width:160px">Actie</th>
                   </tr>
@@ -180,26 +181,32 @@
               </table>
             </div>
 
+            <!-- Nieuwe regel -->
             <div class="newbar">
-              <div class="rules-input w-desc" style="opacity:.6;pointer-events:none">Omschrijving</div>
+              <input class="rules-input w-desc" type="text" data-new="description" placeholder="Omschrijving">
               <input class="rules-input w-offer" type="text" value="${offerKey==='—' ? '' : escapeHtml(offerKey)}" data-new="offer_id" placeholder="Offer ID">
               <input class="rules-input w-sm"   type="text" data-new="affiliate_id" placeholder="Affiliate ID (leeg=any)">
               <input class="rules-input w-sm"   type="text" data-new="sub_id"       placeholder="Sub ID (leeg of 'null')">
               <input class="rules-input w-xs"   type="number" data-new="percent_accept" placeholder="% Accept" value="50" min="0" max="100">
-              <input class="rules-input w-xs"   type="number" data-new="priority" placeholder="priority (legacy)" value="100" disabled aria-disabled="true" style="opacity:.5">
               <label><input class="chk" type="checkbox" data-new="active" checked> Active</label>
-              <button class="rules-btn ok" data-role="add">Toevoegen</button>
+              <button class="rules-btn ok" data-role="add" type="button">Toevoegen</button>
             </div>
           </div>
         `;
 
-        // toggle
-        el.querySelector('[data-role=toggle]').addEventListener('click', ()=>{
+        // toggler
+        const toggle = el.querySelector('[data-role=toggle]');
+        toggle.addEventListener('click', ()=>{
           el.classList.toggle('collapsed');
-          el.querySelector('.chev').style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
+          const exp = !el.classList.contains('collapsed');
+          toggle.setAttribute('aria-expanded', String(exp));
+          el.querySelector('.chev').style.transform = exp ? 'rotate(90deg)' : 'rotate(0deg)';
+        });
+        toggle.addEventListener('keydown', (e)=>{
+          if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle.click(); }
         });
 
-        // opslaan/verwijderen
+        // row actions
         el.querySelector('tbody').addEventListener('click', (ev)=>{
           const btn = ev.target.closest('button[data-act]'); if(!btn) return;
           const tr  = btn.closest('tr'); const id = tr?.dataset?.id; if(!id) return;
@@ -223,15 +230,14 @@
 
         // toevoegen
         el.querySelector('[data-role=add]').addEventListener('click', ()=>{
-          const row = el.querySelector('.newbar');
+          const bar = el.querySelector('.newbar');
           const p = {
-            description    : '', // leeg veld bovenaan is decoratief
-            affiliate_id   : emptyToNull(row.querySelector('[data-new="affiliate_id"]').value),
-            offer_id       : emptyToNull(row.querySelector('[data-new="offer_id"]').value) || (offerKey==='—'? null : offerKey),
-            sub_id         : normalizeSub(row.querySelector('[data-new="sub_id"]').value),
-            percent_accept : Number(row.querySelector('[data-new="percent_accept"]').value || 0),
-            priority       : Number(row.querySelector('[data-new="priority"]')?.value || 100), // legacy
-            active         : row.querySelector('[data-new=active]').checked
+            description    : getNew(bar,'description'),
+            affiliate_id   : emptyToNull(getNew(bar,'affiliate_id')),
+            offer_id       : emptyToNull(getNew(bar,'offer_id')) || (offerKey==='—'? null : offerKey),
+            sub_id         : normalizeSub(getNew(bar,'sub_id')),
+            percent_accept : Number(getNew(bar,'percent_accept')||0),
+            active         : bar.querySelector('[data-new=active]').checked
           };
           const body = writeDesc(p);
           fetch(cfg.apiRules, { method:'POST', headers: hdrs(), body: JSON.stringify(body) })
@@ -255,7 +261,6 @@
             <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id" aria-label="Sub ID"></td>
             <td><input type="text" value="${esc(it.offer_id)}" data-k="offer_id" aria-label="Offer ID"></td>
             <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept" aria-label="Percent accept"></td>
-            <td><input type="number" value="${Number(it.priority ?? 100)}" data-k="priority" aria-label="Priority (legacy)" disabled aria-disabled="true" style="opacity:.5"></td>
             <td style="text-align:center"><input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active" aria-label="Active"></td>
             <td class="row-actions">
               <button class="rules-btn ghost"  data-act="save"   type="button">Save</button>
@@ -274,28 +279,28 @@
           offer_id       : emptyToNull(get('offer_id').value),
           sub_id         : normalizeSub(get('sub_id').value),
           percent_accept : Number(get('percent_accept').value || 0),
-          priority       : Number(get('priority')?.value || 100), // legacy; input is disabled maar we sturen 'm mee
           active         : q('input[data-k="active"]').checked
         };
       }
 
-      /* -------- Filters (client-side) -------- */
+      /* -------- Filters (client-side, zonder priority) -------- */
       function applyFilters(){
         const fOffer = (root.querySelector('#f_offer').value || '').trim();
         const fAff   = (root.querySelector('#f_aff').value || '').trim();
         const fSub   = (root.querySelector('#f_sub').value || '').trim();
-        const fPri   = root.querySelector('#f_pri').value;
         const fQ     = (root.querySelector('#f_q').value || '').toLowerCase().trim();
         const onlyA  = root.querySelector('#f_active').checked;
 
         root.querySelectorAll('.group').forEach(group=>{
           let visible = true;
 
+          // Offer filter (match op group-key)
           if(fOffer){
             const key = group.dataset.offer || '';
             if(!String(key).includes(fOffer)) visible = false;
           }
 
+          // Filter op rijen
           let rowsVisible = 0;
           group.querySelectorAll('tbody tr').forEach(tr=>{
             let rowOK = true;
@@ -309,7 +314,6 @@
                 if(subv!=='' && subv!==null) rowOK = false;
               }else if(!String(subv||'').includes(fSub)) rowOK = false;
             }
-            if(fPri && Number(v('priority')||999999) > Number(fPri)) rowOK = false; // legacy filter
             if(fQ && !desc.includes(fQ)) rowOK = false;
             if(onlyA){
               const chk = tr.querySelector('input[data-k="active"]');
@@ -319,8 +323,11 @@
             if(rowOK) rowsVisible++;
           });
 
+          // header teller bijwerken
           const meta = group.querySelector('.group-sub');
           if(meta) meta.textContent = `${rowsVisible} regel(s)`;
+
+          // groep verbergen als niets matcht
           group.style.display = (visible && rowsVisible>0) ? '' : 'none';
         });
       }
@@ -329,6 +336,7 @@
       function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
       function emptyToNull(v){ return v==='' ? null : v; }
       function normalizeSub(v){ return (v==='' || v==='null') ? null : v; }
+      function getNew(rootEl, name){ return rootEl.querySelector(`[data-new="${name}"]`)?.value ?? ''; }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
     }
   };
