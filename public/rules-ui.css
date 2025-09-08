@@ -211,3 +211,8 @@ table.rules input[data-k="percent_accept"]{max-width:86px}
 #counters-ui tr.total td:last-child {
   border-radius: 0 0 12px 0; /* rechter onderhoek afgerond */
 }
+
+/* Alleen in counters UI: geen padding in table-wrap zodat total-row strak aansluit */
+#counters-ui .table-wrap {
+  padding: 0;
+}
