@@ -191,14 +191,14 @@ table.rules input[data-k="percent_accept"]{max-width:86px}
    ========================================================= */
 /* Subtotaalrijen in de per-groep tabellen */
 #counters-ui tr.subtotal td {
-  background: #deb193;
+  background: #F4E5DC;
   font-weight: 600;
   color: #1e293b;
 }
 
 /* Totaal selectie (onderaan alle groepen) */
 #counters-ui tr.total td {
-  background: #d69e79;
+  background: #EDD5C5;
   font-weight: 700;
   color: #1e293b;
 }
