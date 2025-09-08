@@ -25,11 +25,10 @@ body{
    WRAPPER & TOOLBAR
    ========================================================= */
 .rules-wrap{
-  max-width: 1360px;      /* breder dashboard */
+  max-width: 1360px;
   margin: 0 auto;
   padding: 28px 28px 44px 28px;
 }
-
 .rules-card{
   background:var(--panel);
   border:1px solid var(--border);
@@ -37,11 +36,9 @@ body{
   margin-bottom:28px;
   box-shadow:var(--shadow);
 }
-
-/* top filter/controls */
 .rules-toolbar{
   display:flex;
-  flex-wrap:wrap;       /* netjes afbreken op mobiel */
+  flex-wrap:wrap;
   align-items:center;
   gap:12px;
   padding:16px 16px 10px 16px;
@@ -53,11 +50,11 @@ body{
   border:1.5px solid var(--border);
   color:var(--text);
   border-radius:12px;
-  height:40px;                  /* compacter */
+  height:40px;
   padding:0 14px;
   outline:none;
-  font-size:14px;               /* compacter */
-  min-width: 220px;             /* zodat placeholders niet afkappen */
+  font-size:14px;
+  min-width:220px;
 }
 .rules-input:focus{border-color:var(--brand);background:#fff}
 .rules-btn{
@@ -74,58 +71,55 @@ body{
 .rules-btn:hover{filter:brightness(1.05)}
 
 /* =========================================================
-   GROUPS (per offer)
+   GROUPS (strakke randen, marge L/R; geen verticale gap)
    ========================================================= */
 .group{
-  border-top:1px solid var(--border);
-  border-radius:12px;
+  border:1px solid var(--border);
+  border-radius:0;
+  margin:0 12px;      /* witruimte links/rechts binnen de card */
   overflow:hidden;
-  margin-bottom:14px;
 }
-
+.group + .group{ margin-top:0; }
 .group-header{
   display:flex;align-items:center;gap:12px;
-  padding:16px 20px;                  /* meer ruimte en kleinere kop */
   background:var(--thead);
   cursor:pointer;
-  font-size:16px;font-weight:700;
-  color:var(--text);
+  font-size:16px;font-weight:700;color:var(--text);
   border-bottom:1px solid var(--border);
+  padding:14px 16px;
+  min-height:48px;
 }
+.group-header:hover{ filter:brightness(0.98); }
 .group-title{font-weight:700}
 .group-sub{margin-left:auto;color:var(--muted);font-size:13px}
 .chev{width:18px;height:18px;transform:rotate(-90deg);transition:transform .15s}
 .group.collapsed .chev{transform:rotate(0deg)}
-
-/* lucht boven de tabel na uitklappen */
 .group-body{
-  padding:12px 16px 18px 16px;  /* top padding toegevoegd + meer zijruimte */
+  padding:12px 16px 18px 16px;
   display:none;
 }
 .group:not(.collapsed) .group-body{display:block}
 
 /* =========================================================
-   TABLE
+   TABLE (gedeeld door Rules & Counters)
    ========================================================= */
 .table-wrap{
-  overflow-x:auto;           /* horizontaal scrollen indien nodig */
-  padding: 6px 8px 0;        /* ruimte los van randen */
+  overflow-x:auto;
+  padding:6px 8px 0;
   background:#fff;
   border-radius:12px;
   border:1px solid var(--border);
 }
-
-/* zorg dat header compact & één regel is */
 table.rules{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
 table.rules thead th{
   position:sticky;top:0;z-index:1;
   background:var(--thead);
   color:var(--text);
   text-align:left;
-  padding:10px 14px;            /* compacter */
-  white-space:nowrap;           /* 1 regel */
+  padding:10px 14px;
+  white-space:nowrap;
   border-bottom:1px solid var(--border);
-  font-size:12px;               /* kleinere header fonts */
+  font-size:12px;
   letter-spacing:.2px;
 }
 table.rules tbody td{
@@ -136,33 +130,34 @@ table.rules tbody td{
 table.rules tbody tr:nth-child(odd) td{background:#f7faff}
 table.rules tbody tr:hover td{background:#eef4ff}
 
-/* cel-inputs: compacte breedtes per kolom */
+/* Inputs in rules-tabel (priority is verwijderd) */
 table.rules input[type=text], table.rules input[type=number]{
   width:100%;
   background:#fff;
   border:1.5px solid var(--border);
   border-radius:9px;
-  height:34px;                     /* compacter */
+  height:34px;
   padding:0 10px;
   font-size:14px;
 }
 
-/* per veld een slimmere max-breedte (zodat alles op 1 rij past) */
-table.rules input[data-k="description"]{max-width: 260px}
+/* kolombreedtes – herverdeeld */
+table.rules input[data-k="description"]{max-width:300px}
 table.rules input[data-k="affiliate_id"],
-table.rules input[data-k="sub_id"]{max-width: 120px}
-table.rules input[data-k="percent_accept"],
-table.rules input[data-k="priority"]{max-width: 86px}
+table.rules input[data-k="sub_id"],
+table.rules input[data-k="offer_id"]{max-width:120px}
+table.rules input[data-k="percent_accept"]{max-width:86px}
 
+/* algemene UI */
 .chk{width:18px;height:18px;vertical-align:middle}
 .row-actions{display:flex;gap:8px}
 
 /* =========================================================
-   NEW ROW BAR (blijft zichtbaar bij horizontaal scrollen)
+   NEW ROW BAR
    ========================================================= */
 .newbar{
   position: sticky;
-  left:0; right:0; bottom:0;        /* sticky binnen .group-body (horizontaal zichtbaar) */
+  left:0; right:0; bottom:0;
   display:flex; gap:10px; align-items:center; flex-wrap:nowrap;
   background:linear-gradient(180deg, #ffffff, #f8fbff);
   padding:10px 12px;
@@ -171,38 +166,16 @@ table.rules input[data-k="priority"]{max-width: 86px}
   margin-top:12px;
 }
 .newbar .rules-input{height:34px;font-size:14px;min-width:auto}
-.newbar .w-desc{width:240px}
+.newbar .w-desc{width:260px}
+.newbar .w-offer{width:140px}     /* NIEUW: breedte voor offer veld */
 .newbar .w-sm{width:140px}
 .newbar .w-xs{width:86px}
 
-/* hintje onder groep */
+/* hint onder groep */
 .hint{margin:8px 2px 0;color:var(--muted);font-size:13px}
 
 /* empty / errors */
 .rules-empty{padding:24px;color:var(--muted);text-align:center;font-size:16px}
-
-/* =========================================================
-   NEW OFFER PANEL (onder alle groepen)
-   ========================================================= */
-.new-offer-panel{
-  margin: 26px auto 0;
-  max-width: 100%;
-  background:var(--panel);
-  border:1px dashed var(--border);
-  border-radius:14px;
-  padding:16px;
-  display:flex;flex-wrap:wrap;gap:10px;align-items:center;
-}
-.new-offer-panel h3{
-  flex-basis:100%;
-  margin:0 0 2px 0;
-  font-size:16px;font-weight:700;color:var(--brand);
-}
-.new-offer-panel .rules-input{height:36px;min-width:auto}
-.new-offer-panel .w-offer{width:140px}
-.new-offer-panel .w-desc{width:260px}
-.new-offer-panel .w-sm{width:140px}
-.new-offer-panel .w-xs{width:86px}
 
 /* =========================================================
    RESPONSIVE
@@ -210,74 +183,20 @@ table.rules input[data-k="priority"]{max-width: 86px}
 @media (max-width: 900px){
   .rules-wrap{padding:14px}
   .rules-input{min-width:160px}
-  table.rules input[data-k="description"]{max-width:200px}
+  table.rules input[data-k="description"]{max-width:220px}
 }
 
-/* Groepen strak tegen elkaar, maar met marge links/rechts in de card */
-.group{
-  border:1px solid var(--border);
-  border-radius:0;           /* rechte hoeken */
-  margin:0 12px;             /* witruimte links/rechts */
-  overflow:hidden;
-}
-
-/* Geen verticale ruimte tussen opvolgende groepen */
-.group + .group{ margin-top:0; }
-
-/* Kop iets compacter */
-.group-header{
-  background:var(--thead);
-  padding:14px 16px;
-  border-bottom:1px solid var(--border);
-  min-height:48px;           /* nette hoogte */
-}
-
-.group-header:hover{ filter:brightness(0.98); }
-
-/* Counters tabel styling */
-#counters-ui .result {
-  margin-top: 16px;
-}
-
-#counters-ui table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-#counters-ui thead th {
-  background: var(--thead);
-  text-align: left;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-  font-size: 13px;
-}
-
-#counters-ui tbody td {
-  background: #fff;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-/* zebra effect */
-#counters-ui tbody tr:nth-child(odd) td {
-  background: #f9fbfd;
-}
-
-/* hover highlight */
-#counters-ui tbody tr:hover td {
-  background: #eef4ff;
-}
-
-/* subtotaal balken (ingeklapte dag totalen) */
+/* =========================================================
+   COUNTERS SPECIFIEKE TINTEN (subtotaal + totaal)
+   ========================================================= */
+/* Subtotaalrijen in de per-groep tabellen */
 #counters-ui tr.subtotal td {
   background: #deb193;
   font-weight: 600;
   color: #1e293b;
 }
 
-/* totaalbalk onderaan */
+/* Totaal selectie (onderaan alle groepen) */
 #counters-ui tr.total td {
   background: #d69e79;
   font-weight: 700;
