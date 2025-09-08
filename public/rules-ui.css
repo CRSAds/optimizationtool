@@ -201,4 +201,13 @@ table.rules input[data-k="percent_accept"]{max-width:86px}
   background: #EDD5C5;
   font-weight: 700;
   color: #1e293b;
+  padding: 0;                /* geen interne witruimte */
+  height: 44px;              /* vaste hoogte voor nette spacing */
+}
+
+#counters-ui tr.total td:first-child {
+  border-radius: 0 0 0 12px; /* linker onderhoek afgerond */
+}
+#counters-ui tr.total td:last-child {
+  border-radius: 0 0 12px 0; /* rechter onderhoek afgerond */
 }
