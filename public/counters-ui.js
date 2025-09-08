@@ -2,7 +2,7 @@
 (() => {
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
-  const API_RULES    = `${API_BASE}/rules`; // om rule.percent_accept op te halen
+  const API_RULES    = `${API_BASE}/rules`; // voor rule.percent_accept
 
   const mount = document.getElementById('counters-ui');
   if(!mount){ console.error('counters-ui mount not found'); return; }
@@ -67,6 +67,7 @@
     return {'X-Admin-Token': t, 'Accept':'application/json'};
   }
   const keyOrDash = v => (v===''||v===null||v===undefined) ? '—' : String(v);
+  function cssId(s){ return String(s).replace(/\s+/g,'-').replace(/[^a-zA-Z0-9_-]/g,''); }
 
   // Date presets
   function setPreset(which){
@@ -110,7 +111,6 @@
     host.innerHTML = `<div class="rules-empty">Laden…</div>`;
 
     try{
-      // we hebben rules nodig voor Rule % (config)
       await ensureRules();
 
       const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: authHeaders() });
@@ -131,6 +131,10 @@
       for(const k of keys){
         host.appendChild(renderGroup(mode, k, grouped[k]));
       }
+
+      // totaal selectie
+      host.appendChild(renderGrandTotal(rows));
+
     }catch(e){
       host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message||String(e))}</div>`;
     }
@@ -139,7 +143,6 @@
   // Group helpers
   function groupKeySort(a,b,mode){
     if(mode==='date') return b.localeCompare(a); // nieuwste boven
-    // ‘—’ onderaan
     if(a==='—' && b!=='—') return 1;
     if(b==='—' && a!=='—') return -1;
     const na = Number(a), nb = Number(b);
@@ -153,7 +156,7 @@
         mode==='offer'     ? keyOrDash(it.offer_id) :
         mode==='affiliate' ? keyOrDash(it.affiliate_id) :
         mode==='sub'       ? keyOrDash(it.sub_id) :
-        keyOrDash(it.date); // date
+        keyOrDash(it.date);
       (m[key] ||= []).push(it);
     }
     return m;
@@ -162,10 +165,9 @@
     if(mode==='offer')     return `Offer: ${escapeHtml(key)}`;
     if(mode==='affiliate') return `Affiliate: ${escapeHtml(key)}`;
     if(mode==='sub')       return `Sub: ${escapeHtml(key)}`;
-    return escapeHtml(key); // date
+    return escapeHtml(key);
   }
 
-  // Aggregatie binnen groep:
   // combineer per (affiliate_id, offer_id, sub_id, rulePercent)
   function aggregateRows(items){
     const map = new Map();
@@ -174,7 +176,7 @@
       const off = keyOrDash(it.offer_id);
       const sub = keyOrDash(it.sub_id);
       const rp  = RULES_MAP?.[it.rule_id]?.percent_accept;
-      const rps = (rp===0 || rp) ? String(rp) : '—'; // ‘—’ als rule onbekend
+      const rps = (rp===0 || rp) ? String(rp) : '—';
       const key = `${aff}|${off}|${sub}|${rps}`;
       const acc = map.get(key) || { affiliate_id: aff, offer_id: off, sub_id: sub, rule_percent: (rps==='—'?null:Number(rp)), total: 0, accepted: 0 };
       acc.total    += Number(it.total_leads || 0);
@@ -186,8 +188,6 @@
 
   function renderGroup(mode, key, items){
     const rows = aggregateRows(items);
-
-    // totals voor header
     let tot=0, acc=0;
     for(const r of rows){ tot += r.total; acc += r.accepted; }
     const p = pct(acc, tot);
@@ -248,7 +248,6 @@
       </div>
     `;
 
-    // toggle
     const toggle = el.querySelector('[data-role=toggle]');
     toggle.addEventListener('click', ()=>{
       el.classList.toggle('collapsed');
@@ -263,9 +262,33 @@
     return el;
   }
 
-  function cssId(s){ return String(s).replace(/\s+/g,'-').replace(/[^a-zA-Z0-9_-]/g,''); }
+  function renderGrandTotal(allRows){
+    let total = 0, accepted = 0;
+    for(const it of allRows){
+      total    += Number(it.total_leads || 0);
+      accepted += Number(it.accepted_leads || 0);
+    }
+    const p = pct(accepted, total);
 
-  // presets + run
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.style.margin = '12px';
+
+    wrap.innerHTML = `
+      <table class="rules">
+        <tbody>
+          <tr class="tfoot">
+            <td style="text-align:right;padding-right:10px;font-weight:700">Totaal selectie</td>
+            <td style="width:140px">${fmt(total)}</td>
+            <td style="width:140px">${fmt(accepted)}</td>
+            <td style="width:140px">${p.toFixed(1)}%</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+    return wrap;
+  }
+
   mount.addEventListener('click', (e)=>{
     const btn = e.target.closest('.rules-btn.ghost[data-preset]'); if(!btn) return;
     setPreset(btn.dataset.preset);
