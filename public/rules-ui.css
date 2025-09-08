@@ -233,3 +233,53 @@ table.rules input[data-k="priority"]{max-width: 86px}
 }
 
 .group-header:hover{ filter:brightness(0.98); }
+
+/* Counters tabel styling */
+#counters-ui .result {
+  margin-top: 16px;
+}
+
+#counters-ui table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+#counters-ui thead th {
+  background: var(--thead);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+#counters-ui tbody td {
+  background: #fff;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* zebra effect */
+#counters-ui tbody tr:nth-child(odd) td {
+  background: #f9fbfd;
+}
+
+/* hover highlight */
+#counters-ui tbody tr:hover td {
+  background: #eef4ff;
+}
+
+/* subtotaal balken (ingeklapte dag totalen) */
+#counters-ui tr.subtotal td {
+  background: #deb193;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* totaalbalk onderaan */
+#counters-ui tr.total td {
+  background: #d69e79;
+  font-weight: 700;
+  color: #1e293b;
+}
