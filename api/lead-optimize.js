@@ -22,88 +22,100 @@ function dfetch(path, init = {}) {
   return fetch(url, { ...init, headers });
 }
 
-function todayISO() { return new Date().toISOString().slice(0,10); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
 
-async function hashToPercent(input) {
+async function hashToPercent(input){
   const data = new TextEncoder().encode(input);
   const buf = await crypto.subtle.digest('SHA-256', data);
-  const b = new Uint8Array(buf);
-  // neem de eerste 4 bytes als unsigned int
-  const n = ((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0;
+  const b   = new Uint8Array(buf);
+  const n   = ((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0;
   return n % 100; // 0..99
 }
 
-/** Eén query die een set filters o.b.v. specificiteit ophaalt en
- *  direct de beste (laagste priority) teruggeeft. */
-async function fetchOneRuleWithPriority({ affiliate_id, offer_id, sub_id }) {
+/* =========================
+   BEST MATCH RULE LOOKUP
+   ========================= */
+
+// Kandidaten: regels die niet in tegenspraak zijn (eq of null/wildcard)
+// We vragen ook `date_created` op voor een nette tie-break (nieuwste wint).
+async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
-  p.append('fields', '*');
-  p.append('limit', '50');           // veiligheidsmarge
-  p.append('sort[]', 'priority');    // laagste priority eerst
+  p.append('fields', '*,date_created');
+  p.append('limit', '300');
+  p.append('sort[]', 'id'); // stabiel maar ondergeschikt, echte keuze gebeurt client-side
   p.append('filter[_and][0][active][_eq]', 'true');
 
-  // affiliate
-  if (affiliate_id === null) p.append('filter[_and][1][affiliate_id][_null]', 'true');
-  else p.append('filter[_and][1][affiliate_id][_eq]', String(affiliate_id));
+  // affiliate: (eq) OR (_null)
+  p.append('filter[_and][1][_or][0][affiliate_id][_eq]', String(affiliate_id ?? ''));
+  p.append('filter[_and][1][_or][1][affiliate_id][_null]', 'true');
 
-  // offer
-  if (offer_id === null) p.append('filter[_and][2][offer_id][_null]', 'true');
-  else p.append('filter[_and][2][offer_id][_eq]', String(offer_id));
+  // offer: (eq) OR (_null)
+  p.append('filter[_and][2][_or][0][offer_id][_eq]', String(offer_id ?? ''));
+  p.append('filter[_and][2][_or][1][offer_id][_null]', 'true');
 
-  // sub
-  if (sub_id === null) p.append('filter[_and][3][sub_id][_null]', 'true');
-  else p.append('filter[_and][3][sub_id][_eq]', String(sub_id));
+  // sub: (eq) OR (_null)
+  p.append('filter[_and][3][_or][0][sub_id][_eq]', String(sub_id ?? ''));
+  p.append('filter[_and][3][_or][1][sub_id][_null]', 'true');
 
   const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
   if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
   const j = await r.json();
-  const rows = Array.isArray(j?.data) ? j.data : [];
-  return rows[0] || null; // server sorteert al op priority asc; neem de eerste
+  return Array.isArray(j?.data) ? j.data : [];
 }
 
-/** Cascade:
- *  1) sub-exact (affiliate+offer+sub)
- *  2) combo (affiliate+offer, sub=null)
- *  3) affiliate-only (offer=null, sub=null)
- *  4) offer-only (affiliate=null, sub=null)
- *  5) global (allemaal null)
- */
-async function findRule({ affiliate_id, offer_id, sub_id }) {
-  const N = (v) => (v === undefined || v === null || v === '' ? null : String(v));
-  const aff = N(affiliate_id);
-  const off = N(offer_id);
-  const sub = N(sub_id);
+// Score = aantal NIET-null velden in de regel die matchen (0..3)
+// Regel-waarde null = wildcard ⇒ telt niet mee voor score, maar blokkeert ook niet.
+function matchScore(rule, lead){
+  const eq = (ruleVal, leadVal) => ruleVal == null ? true : String(ruleVal) === String(leadVal ?? '');
+  const okAff = eq(rule.affiliate_id, lead.affiliate_id);
+  const okOff = eq(rule.offer_id,     lead.offer_id);
+  const okSub = eq(rule.sub_id,       lead.sub_id);
+  if(!okAff || !okOff || !okSub) return -1;
 
-  let rule;
-
-  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: sub });
-  if (rule) return { rule, level: 'sub-exact' };
-
-  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: off, sub_id: null });
-  if (rule) return { rule, level: 'combo-aff+offer' };
-
-  rule = await fetchOneRuleWithPriority({ affiliate_id: aff, offer_id: null, sub_id: null });
-  if (rule) return { rule, level: 'affiliate-only' };
-
-  rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: off, sub_id: null });
-  if (rule) return { rule, level: 'offer-only' };
-
-  rule = await fetchOneRuleWithPriority({ affiliate_id: null, offer_id: null, sub_id: null });
-  if (rule) return { rule, level: 'global' };
-
-  return { rule: null, level: null };
+  let s = 0;
+  if (rule.affiliate_id != null) s++;
+  if (rule.offer_id     != null) s++;
+  if (rule.sub_id       != null) s++;
+  return s;
 }
 
-/* ===== Counters (nu ook met rule_id) ===== */
+// Beste regel: hoogste score → tie-break: nieuwst (date_created) → kleinste id
+function selectBestRule(candidates, lead){
+  let best = null;
+  for(const r of candidates){
+    const s = matchScore(r, lead);
+    if(s < 0) continue;
+
+    if(!best){ best = { r, s }; continue; }
+    if(s > best.s){ best = { r, s }; continue; }
+
+    if(s === best.s){
+      const da = new Date(r.date_created || 0).getTime();
+      const db = new Date(best.r.date_created || 0).getTime();
+      if(da > db){ best = { r, s }; continue; }
+      if(da === db && String(r.id).localeCompare(String(best.r.id)) < 0){
+        best = { r, s }; continue;
+      }
+    }
+  }
+  return best ? { rule: best.r, level: `score-${best.s}` } : { rule: null, level: null };
+}
+
+async function findRule(lead){
+  const candidates = await fetchCandidateRules(lead);
+  return selectBestRule(candidates, lead);
+}
+
+/* ===== Counters (incl. rule_id) ===== */
 
 async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
   const filter = {
     _and: [
       { date: { _eq: date } },
       { affiliate_id: { _eq: String(affiliate_id) } },
-      { offer_id: { _eq: String(offer_id) } },
+      { offer_id:     { _eq: String(offer_id) } },
       sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
-      rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } }, // ← nieuw
+      rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } },
     ],
   };
   const qs = new URLSearchParams({
@@ -128,7 +140,7 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addT
         affiliate_id: String(affiliate_id),
         offer_id: String(offer_id),
         sub_id: sub_id == null ? null : String(sub_id),
-        rule_id: rule_id == null ? null : String(rule_id),  // ← nieuw
+        rule_id: rule_id == null ? null : String(rule_id),
         total_leads: addTotal,
         accepted_leads: addAccepted,
       }),
@@ -181,7 +193,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
     }
 
-    // 1) Rule (cascade + priority binnen trede)
+    // 1) Beste regel op basis van "meeste overeenkomsten"
     const { rule, level } = await findRule(lead);
     if (!rule) return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
 
@@ -192,7 +204,7 @@ export default async function handler(req, res) {
         affiliate_id: lead.affiliate_id,
         offer_id: lead.offer_id,
         sub_id: lead.sub_id,
-        rule_id: rule.id, // ← belangrijk
+        rule_id: rule.id,
       });
       if (accepted >= Number(rule.cap_per_day)) {
         await incCounters({
@@ -200,13 +212,13 @@ export default async function handler(req, res) {
           affiliate_id: lead.affiliate_id,
           offer_id: lead.offer_id,
           sub_id: lead.sub_id,
-          rule_id: rule.id, // ← belangrijk
+          rule_id: rule.id,
           addTotal: 1,
           addAccepted: 0
         });
         return res.status(200).json({
           ok:true, decision:'reject', reason:'daily-cap', rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
+            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
           }
         });
       }
@@ -224,7 +236,7 @@ export default async function handler(req, res) {
       affiliate_id: lead.affiliate_id,
       offer_id: lead.offer_id,
       sub_id: lead.sub_id,
-      rule_id: rule.id,               // ← belangrijk
+      rule_id: rule.id,
       addTotal: 1,
       addAccepted: accept ? 1 : 0,
     });
@@ -235,21 +247,20 @@ export default async function handler(req, res) {
         const forwarded = await postbackToAffise(lead.clickid);
         return res.status(200).json({
           ok:true, decision:'accept', forwarded, rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
+            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
           }
         });
       } catch (e) {
-        // Accept maar postback faalde
         return res.status(200).json({
           ok:true, decision:'accept', forwarded:false, error:String(e), rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
+            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
           }
         });
       }
     } else {
       return res.status(200).json({
         ok:true, decision:'reject', rule_level: level, rule: {
-          id: rule.id, percent_accept: rule.percent_accept, priority: rule.priority, sub_id: rule.sub_id
+          id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
         }
       });
     }
