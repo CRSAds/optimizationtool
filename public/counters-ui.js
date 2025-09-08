@@ -235,7 +235,7 @@
                     <td>${delta===null ? '—' : (delta>=0 ? '+' : '')}${delta?.toFixed(1)}%</td>
                   </tr>`;
               }).join('')}
-              <tr class="tfoot">
+              <tr class="subtotal">
                 <td colspan="4" style="text-align:right;padding-right:10px">Totaal</td>
                 <td>${fmt(tot)}</td>
                 <td>${fmt(acc)}</td>
@@ -277,7 +277,7 @@
     wrap.innerHTML = `
       <table class="rules">
         <tbody>
-          <tr class="tfoot">
+          <tr class="total">
             <td style="text-align:right;padding-right:10px;font-weight:700">Totaal selectie</td>
             <td style="width:140px">${fmt(total)}</td>
             <td style="width:140px">${fmt(accepted)}</td>
