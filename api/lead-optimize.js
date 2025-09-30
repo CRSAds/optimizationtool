@@ -46,16 +46,28 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   p.append('filter[_and][0][active][_eq]', 'true');
 
   // affiliate: (eq) OR (_null)
-  p.append('filter[_and][1][_or][0][affiliate_id][_eq]', String(affiliate_id ?? ''));
-  p.append('filter[_and][1][_or][1][affiliate_id][_null]', 'true');
+  if (affiliate_id == null || affiliate_id === '') {
+    p.append('filter[_and][1][affiliate_id][_null]', 'true');
+  } else {
+    p.append('filter[_and][1][_or][0][affiliate_id][_eq]', String(affiliate_id));
+    p.append('filter[_and][1][_or][1][affiliate_id][_null]', 'true');
+  }
 
   // offer: (eq) OR (_null)
-  p.append('filter[_and][2][_or][0][offer_id][_eq]', String(offer_id ?? ''));
-  p.append('filter[_and][2][_or][1][offer_id][_null]', 'true');
+  if (offer_id == null || offer_id === '') {
+    p.append('filter[_and][2][offer_id][_null]', 'true');
+  } else {
+    p.append('filter[_and][2][_or][0][offer_id][_eq]', String(offer_id));
+    p.append('filter[_and][2][_or][1][offer_id][_null]', 'true');
+  }
 
   // sub: (eq) OR (_null)
-  p.append('filter[_and][3][_or][0][sub_id][_eq]', String(sub_id ?? ''));
-  p.append('filter[_and][3][_or][1][sub_id][_null]', 'true');
+  if (sub_id == null || sub_id === '') {
+    p.append('filter[_and][3][sub_id][_null]', 'true');
+  } else {
+    p.append('filter[_and][3][_or][0][sub_id][_eq]', String(sub_id));
+    p.append('filter[_and][3][_or][1][sub_id][_null]', 'true');
+  }
 
   const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
   if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
