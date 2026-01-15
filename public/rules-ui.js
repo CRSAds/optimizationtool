@@ -171,6 +171,9 @@
                     <th>Sub ID</th>
                     <th>Offer ID</th>
                     <th>% Accept (config)</th>
+                    <th>Auto Pilot</th> 
+                    <th>Target Marge</th> 
+                    <th>Min Vol</th> 
                     <th>Active</th>
                     <th style="width:160px">Actie</th>
                   </tr>
@@ -251,7 +254,7 @@
         return el;
       }
 
-      function rowHtml(it){
+        function rowHtml(it){
         const esc = (s)=> (s ?? '').toString().replace(/"/g,'&quot;');
         const desc = readDesc(it);
         return `
@@ -261,6 +264,19 @@
             <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id" aria-label="Sub ID"></td>
             <td><input type="text" value="${esc(it.offer_id)}" data-k="offer_id" aria-label="Offer ID"></td>
             <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept" aria-label="Percent accept"></td>
+            
+            <td style="text-align:center">
+              <input class="chk" type="checkbox" ${it.auto_pilot ? 'checked' : ''} data-k="auto_pilot" aria-label="Auto Pilot">
+            </td>
+
+            <td>
+              <input type="number" step="0.1" value="${it.target_margin ?? 15}" data-k="target_margin" aria-label="Target Margin" style="width:65px">
+            </td>
+
+            <td>
+              <input type="number" value="${it.min_volume ?? 20}" data-k="min_volume" aria-label="Min Volume" style="width:60px">
+            </td>
+
             <td style="text-align:center"><input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active" aria-label="Active"></td>
             <td class="row-actions">
               <button class="rules-btn ghost"  data-act="save"   type="button">Save</button>
@@ -279,6 +295,9 @@
           offer_id       : emptyToNull(get('offer_id').value),
           sub_id         : normalizeSub(get('sub_id').value),
           percent_accept : Number(get('percent_accept').value || 0),
+          auto_pilot     : q('input[data-k="auto_pilot"]').checked, // NIEUW
+          target_margin  : Number(get('target_margin').value || 15), // NIEUW
+          min_volume     : Number(get('min_volume').value || 20),   // NIEUW
           active         : q('input[data-k="active"]').checked
         };
       }
