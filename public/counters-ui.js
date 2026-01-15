@@ -1,8 +1,7 @@
-// /public/js/counters-ui.js
 (() => {
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
-  const API_RULES    = `${API_BASE}/rules`; // voor rule.percent_accept
+  const API_RULES    = `${API_BASE}/rules`; 
 
   const mount = document.getElementById('counters-ui');
   if(!mount){ console.error('counters-ui mount not found'); return; }
@@ -31,10 +30,10 @@
           </div>
 
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="rules-btn ghost" data-preset="today"     type="button">Vandaag</button>
+            <button class="rules-btn ghost" data-preset="today"      type="button">Vandaag</button>
             <button class="rules-btn ghost" data-preset="yesterday" type="button">Gisteren</button>
-            <button class="rules-btn ghost" data-preset="last7"     type="button">Laatste 7 dagen</button>
-            <button class="rules-btn ghost" data-preset="month"     type="button">Deze maand</button>
+            <button class="rules-btn ghost" data-preset="last7"      type="button">Laatste 7 dagen</button>
+            <button class="rules-btn ghost" data-preset="month"      type="button">Deze maand</button>
             <button id="c_run" class="rules-btn" type="button">Toon resultaten</button>
           </div>
         </div>
@@ -46,11 +45,9 @@
 
   const $ = (s, r=mount) => r.querySelector(s);
 
-  // Token hergebruiken zoals Rules UI
   $('#c_token').value = localStorage.getItem('rui_token') || '';
   $('#c_token').addEventListener('change', e=> localStorage.setItem('rui_token', e.target.value.trim()));
 
-  // Group mode persist
   const selMode = $('#c_groupmode');
   selMode.value = localStorage.getItem('c_groupmode') || 'date';
   selMode.addEventListener('change', ()=> {
@@ -58,18 +55,18 @@
     runCounters();
   });
 
-  // utils
   const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
   const pct = (a,t)=> t>0 ? (100*a/t) : 0;
   const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  
   function authHeaders(){
     const t = $('#c_token').value.trim() || '';
     return {'X-Admin-Token': t, 'Accept':'application/json'};
   }
+  
   const keyOrDash = v => (v===''||v===null||v===undefined) ? '—' : String(v);
   function cssId(s){ return String(s).replace(/\s+/g,'-').replace(/[^a-zA-Z0-9_-]/g,''); }
 
-  // Date presets
   function setPreset(which){
     const d = new Date(); const pad = n=> String(n).padStart(2,'0');
     const toIso = (dt)=> `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
@@ -81,7 +78,7 @@
     $('#c_to').value   = toIso(to);
   }
 
-  // rules lookup: id -> {percent_accept}
+  // Uitgebreid voor Auto Pilot
   let RULES_MAP = null;
   async function ensureRules(){
     if(RULES_MAP) return RULES_MAP;
@@ -92,13 +89,18 @@
       const items = j.items || [];
       RULES_MAP = {};
       for(const it of items){
-        if(it.id) RULES_MAP[it.id] = { percent_accept: Number(it.percent_accept ?? 0) };
+        if(it.id) {
+          RULES_MAP[it.id] = { 
+            percent_accept: Number(it.percent_accept ?? 0),
+            auto_pilot: !!it.auto_pilot,
+            target_margin: Number(it.target_margin || 15)
+          };
+        }
       }
     }catch{ RULES_MAP = {}; }
     return RULES_MAP;
   }
 
-  // Data load
   async function runCounters(){
     const q = new URLSearchParams();
     if($('#c_from').value) q.set('date_from', $('#c_from').value);
@@ -123,7 +125,7 @@
         return;
       }
 
-      const mode = $('#c_groupmode').value; // date | offer | affiliate | sub
+      const mode = $('#c_groupmode').value; 
       const grouped = groupByMode(rows, mode);
       const keys = Object.keys(grouped).sort((a,b)=> groupKeySort(a,b,mode));
 
@@ -131,8 +133,6 @@
       for(const k of keys){
         host.appendChild(renderGroup(mode, k, grouped[k]));
       }
-
-      // totaal selectie
       host.appendChild(renderGrandTotal(rows));
 
     }catch(e){
@@ -140,27 +140,28 @@
     }
   }
 
-  // Group helpers
   function groupKeySort(a,b,mode){
-    if(mode==='date') return b.localeCompare(a); // nieuwste boven
+    if(mode==='date') return b.localeCompare(a); 
     if(a==='—' && b!=='—') return 1;
     if(b==='—' && a!=='—') return -1;
     const na = Number(a), nb = Number(b);
     if(!Number.isNaN(na) && !Number.isNaN(nb)) return na-nb;
     return String(a).localeCompare(String(b), 'nl');
   }
+
   function groupByMode(rows, mode){
     const m = {};
     for(const it of rows){
       const key =
-        mode==='offer'     ? keyOrDash(it.offer_id) :
+        mode==='offer'      ? keyOrDash(it.offer_id) :
         mode==='affiliate' ? keyOrDash(it.affiliate_id) :
-        mode==='sub'       ? keyOrDash(it.sub_id) :
+        mode==='sub'        ? keyOrDash(it.sub_id) :
         keyOrDash(it.date);
       (m[key] ||= []).push(it);
     }
     return m;
   }
+
   function groupTitle(mode, key){
     if(mode==='offer')     return `Offer: ${escapeHtml(key)}`;
     if(mode==='affiliate') return `Affiliate: ${escapeHtml(key)}`;
@@ -168,18 +169,26 @@
     return escapeHtml(key);
   }
 
-  // combineer per (affiliate_id, offer_id, sub_id, rulePercent)
   function aggregateRows(items){
     const map = new Map();
     for(const it of items){
       const aff = keyOrDash(it.affiliate_id);
       const off = keyOrDash(it.offer_id);
       const sub = keyOrDash(it.sub_id);
-      const rp  = RULES_MAP?.[it.rule_id]?.percent_accept;
+      const ruleId = it.rule_id;
+      const rp  = RULES_MAP?.[ruleId]?.percent_accept;
       const rps = (rp===0 || rp) ? String(rp) : '—';
-      const key = `${aff}|${off}|${sub}|${rps}`;
-      const acc = map.get(key) || { affiliate_id: aff, offer_id: off, sub_id: sub, rule_percent: (rps==='—'?null:Number(rp)), total: 0, accepted: 0 };
-      acc.total    += Number(it.total_leads || 0);
+      const key = `${aff}|${off}|${sub}|${rps}|${ruleId}`;
+      const acc = map.get(key) || { 
+        affiliate_id: aff, 
+        offer_id: off, 
+        sub_id: sub, 
+        rule_percent: (rps==='—'?null:Number(rp)), 
+        rule_id: ruleId,
+        total: 0, 
+        accepted: 0 
+      };
+      acc.total     += Number(it.total_leads || 0);
       acc.accepted += Number(it.accepted_leads || 0);
       map.set(key, acc);
     }
@@ -211,7 +220,8 @@
                 <th>Affiliate</th>
                 <th>Offer</th>
                 <th>Sub</th>
-                <th>Rule % (config)</th>
+                <th>Rule %</th>
+                <th>Auto Pilot</th>
                 <th>Total</th>
                 <th>Accepted</th>
                 <th>Accept %</th>
@@ -223,12 +233,17 @@
                 const actual = pct(r.accepted, r.total);
                 const cfg    = (r.rule_percent===0 || r.rule_percent) ? Number(r.rule_percent) : null;
                 const delta  = (cfg===null) ? null : (actual - cfg);
+                const ruleMeta = RULES_MAP?.[r.rule_id];
+                
                 return `
                   <tr>
                     <td>${escapeHtml(r.affiliate_id)}</td>
                     <td>${escapeHtml(r.offer_id)}</td>
                     <td>${escapeHtml(r.sub_id)}</td>
                     <td>${cfg===null ? '—' : (cfg.toFixed(0)+'%')}</td>
+                    <td style="text-align:center">
+                      ${ruleMeta?.auto_pilot ? `🤖 <small>(${ruleMeta.target_margin}%)</small>` : '—'}
+                    </td>
                     <td>${fmt(r.total)}</td>
                     <td>${fmt(r.accepted)}</td>
                     <td>${actual.toFixed(1)}%</td>
@@ -236,7 +251,7 @@
                   </tr>`;
               }).join('')}
               <tr class="subtotal">
-                <td colspan="4" style="text-align:right;padding-right:10px">Totaal</td>
+                <td colspan="5" style="text-align:right;padding-right:10px">Totaal</td>
                 <td>${fmt(tot)}</td>
                 <td>${fmt(acc)}</td>
                 <td>${p.toFixed(1)}%</td>
@@ -255,17 +270,14 @@
       toggle.setAttribute('aria-expanded', String(exp));
       el.querySelector('.chev').style.transform = exp ? 'rotate(90deg)' : 'rotate(0deg)';
     });
-    toggle.addEventListener('keydown', (e)=>{
-      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle.click(); }
-    });
-
+    
     return el;
   }
 
   function renderGrandTotal(allRows){
     let total = 0, accepted = 0;
     for(const it of allRows){
-      total    += Number(it.total_leads || 0);
+      total     += Number(it.total_leads || 0);
       accepted += Number(it.accepted_leads || 0);
     }
     const p = pct(accepted, total);
@@ -293,6 +305,7 @@
     const btn = e.target.closest('.rules-btn.ghost[data-preset]'); if(!btn) return;
     setPreset(btn.dataset.preset);
   });
+  
   setPreset('last7');
   $('#c_run').addEventListener('click', runCounters);
 })();
