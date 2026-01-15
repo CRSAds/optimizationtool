@@ -47,6 +47,9 @@ function mapIn(p) {
   if ('percent_accept' in p) body.percent_accept = Number(p.percent_accept ?? 0);
   if ('priority'       in p) body.priority       = Number(p.priority ?? 100);
   if ('active'         in p) body.active         = !!p.active;
+  if ('target_margin'    in p) body.target_margin    = Number(p.target_margin ?? 15);
+  if ('min_volume'       in p) body.min_volume       = Number(p.min_volume ?? 20);
+  if ('auto_pilot'       in p) body.auto_pilot       = !!p.auto_pilot;
   return body;
 }
 
@@ -60,6 +63,9 @@ function mapOut(row) {
     percent_accept: row.percent_accept ?? 0,
     priority: row.priority ?? 100,
     active: !!row.active,
+    target_margin: row.target_margin ?? 15,
+    min_volume: row.min_volume ?? 20,
+    auto_pilot: !!row.auto_pilot,
   };
 }
 
