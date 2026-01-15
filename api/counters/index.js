@@ -1,15 +1,16 @@
-// /pages/api/counters/index.js
-const DIRECTUS_URL   = process.env.DIRECTUS_URL;
+import { createClient } from '@supabase/supabase-js';
+
+// Initialiseer Supabase
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
+const DIRECTUS_URL = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 
-// CORS – gelijk trekken met /api/rules
 function parseAllowed() {
-  return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  return (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',').map(s => s.trim()).filter(Boolean);
 }
+
 function applyCors(req, res) {
   const allowed = parseAllowed();
   const origin = req.headers.origin;
@@ -36,65 +37,60 @@ function dFetch(path, init = {}) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  // admin check (zelfde als /api/rules)
   const hdr = req.headers['x-admin-token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
-    return res.status(403).json({ ok:false, error:'forbidden' });
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ ok:false, error:'Method not allowed' });
+    return res.status(403).json({ ok: false, error: 'forbidden' });
   }
 
   try {
-    // Query params (alias 'from'/'to' voor backwards compat)
-    const {
-      date_from, from,
-      date_to,   to,
-      affiliate_id,
-      offer_id,
-      sub_id,     // 'null' => expliciet null
-      rule_id,    // NIEUW: filter per rule
-      limit = '500',
-      sort = '-date', // default: nieuwste boven
-    } = req.query;
+    const { date_from, date_to, affiliate_id, offer_id, sub_id, limit = '500' } = req.query;
 
+    // 1. Bouw filter voor Directus counters
     const AND = [];
-
-    const df = date_from || from;
-    const dt = date_to   || to;
-    if (df || dt) {
+    if (date_from || date_to) {
       const range = {};
-      if (df) range._gte = String(df);
-      if (dt) range._lte = String(dt);
+      if (date_from) range._gte = String(date_from);
+      if (date_to) range._lte = String(date_to);
       AND.push({ date: range });
     }
-
     if (affiliate_id) AND.push({ affiliate_id: { _eq: String(affiliate_id) } });
-    if (offer_id)     AND.push({ offer_id:     { _eq: String(offer_id) } });
-
-    if (sub_id === 'null') AND.push({ sub_id: { _null: true } });
-    else if (sub_id)       AND.push({ sub_id: { _eq: String(sub_id) } });
-
-    if (rule_id === 'null') AND.push({ rule_id: { _null: true } });
-    else if (rule_id)       AND.push({ rule_id: { _eq: String(rule_id) } });
-
+    if (offer_id) AND.push({ offer_id: { _eq: String(offer_id) } });
     const filter = AND.length ? { _and: AND } : {};
 
     const qs = new URLSearchParams({
-      // Neem rule_id erbij (NIEUW)
       fields: 'id,date,rule_id,affiliate_id,offer_id,sub_id,total_leads,accepted_leads',
-      sort: String(sort),
       limit: String(limit),
       filter: JSON.stringify(filter),
     });
 
     const r = await dFetch(`/items/Optimization_counters?${qs.toString()}`);
     const j = await r.json();
-    if (!r.ok) return res.status(r.status).json(j);
+    const counters = j.data || [];
 
-    return res.status(200).json({ ok:true, items: j.data || [] });
+    // 2. Haal Marge data op uit Supabase View
+    // We pakken de data van de geselecteerde range
+    const { data: marginData, error: sbError } = await supabase
+      .from('offer_performance_v2')
+      .select('offer_id, sub_id, margin_pct, day')
+      .gte('day', date_from || new Date().toISOString().split('T')[0]);
+
+    // 3. Merge data
+    const enrichedItems = counters.map(c => {
+      // Zoek match in Supabase data op basis van offer en sub (affiliate)
+      const match = marginData?.find(m => 
+        String(m.offer_id) === String(c.offer_id) && 
+        String(m.sub_id) === String(c.sub_id) &&
+        String(m.day) === String(c.date)
+      );
+      
+      return {
+        ...c,
+        actual_margin: match ? (match.margin_pct * 100) : null
+      };
+    });
+
+    return res.status(200).json({ ok: true, items: enrichedItems });
   } catch (e) {
-    return res.status(500).json({ ok:false, error:String(e) });
+    return res.status(500).json({ ok: false, error: String(e) });
   }
 }
