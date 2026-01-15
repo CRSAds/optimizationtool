@@ -1,0 +1,16 @@
+{
+  "name": "optimizationtool",
+  "version": "1.0.0",
+  "description": "Lead optimization tool with Directus and Supabase integration",
+  "main": "api/lead-optimize.js",
+  "scripts": {
+    "start": "node api/lead-optimize.js",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
