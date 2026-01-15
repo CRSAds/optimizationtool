@@ -35,6 +35,9 @@ function mapOut(row) {
     percent_accept: row.percent_accept ?? 0,
     priority: row.priority ?? 100,
     active: !!row.active,
+    target_margin: row.target_margin ?? 15,
+    min_volume: row.min_volume ?? 20,
+    auto_pilot: !!row.auto_pilot,
   };
 }
 function mapIn(p) {
@@ -56,6 +59,9 @@ function mapIn(p) {
     percent_accept: Number(p.percent_accept ?? 0),
     priority:       Number(p.priority ?? 100),
     active: !!p.active,
+    target_margin: row.target_margin ?? 15,
+    min_volume: row.min_volume ?? 20,
+    auto_pilot: !!row.auto_pilot,
   };
 }
 
