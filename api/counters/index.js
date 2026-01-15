@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Initialiseer Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
 const DIRECTUS_URL = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 
-// === EXACTE CORS LOGICA UIT JE VORIGE VERSIE ===
+// === EXACTE WERKENDE CORS LOGICA ===
 function parseAllowed() {
   return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
     .split(',')
@@ -16,12 +18,17 @@ function parseAllowed() {
 function applyCors(req, res) {
   const allowed = parseAllowed();
   const origin = req.headers.origin;
+  // Als de origin in de lijst staat of als we alles toestaan (*)
   if (origin && (allowed.includes('*') || allowed.includes(origin))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+  } else if (!origin && allowed.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
+
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token');
+  
   if (req.method === 'OPTIONS') { 
     res.status(204).end(); 
     return true; 
@@ -40,9 +47,10 @@ function dFetch(path, init = {}) {
 }
 
 export default async function handler(req, res) {
-  // CORS als eerste aanroepen
+  // Voer CORS check uit voor de browser
   if (applyCors(req, res)) return;
 
+  // Admin check
   const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
     return res.status(403).json({ ok: false, error: 'forbidden' });
@@ -55,6 +63,7 @@ export default async function handler(req, res) {
   try {
     const { date_from, date_to, affiliate_id, offer_id, sub_id, limit = '500' } = req.query;
 
+    // Filters voor Directus
     const AND = [];
     if (date_from || date_to) {
       const range = {};
@@ -75,17 +84,19 @@ export default async function handler(req, res) {
       filter: JSON.stringify(filter),
     });
 
+    // 1. Haal Directus counters
     const r = await dFetch(`/items/Optimization_counters?${qs.toString()}`);
     const j = await r.json();
     if (!r.ok) return res.status(r.status).json(j);
     const counters = j.data || [];
 
-    // Marge data ophalen
+    // 2. Haal Supabase marges (View)
     const { data: marginData } = await supabase
       .from('offer_performance_v2')
       .select('offer_id, sub_id, margin_pct, day')
       .gte('day', date_from || new Date().toISOString().split('T')[0]);
 
+    // 3. Verrijk data
     const enrichedItems = counters.map(c => {
       const match = marginData?.find(m => 
         String(m.offer_id) === String(c.offer_id) && 
