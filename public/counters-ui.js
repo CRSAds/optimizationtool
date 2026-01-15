@@ -83,9 +83,11 @@
     if(RULES_MAP) return RULES_MAP;
     try{
       const r = await fetch(API_RULES, { headers: authHeaders() });
+      if(!r.ok) throw 0;
       const j = await r.json();
+      const items = j.items || [];
       RULES_MAP = {};
-      (j.items || []).forEach(it => {
+      for(const it of items){
         if(it.id) {
           RULES_MAP[it.id] = { 
             percent_accept: Number(it.percent_accept ?? 0),
@@ -93,7 +95,7 @@
             target_margin: Number(it.target_margin || 15)
           };
         }
-      });
+      }
     }catch{ RULES_MAP = {}; }
     return RULES_MAP;
   }
@@ -112,6 +114,7 @@
     try{
       await ensureRules();
       const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: authHeaders() });
+      if(!r.ok) throw new Error(r.status+' '+r.statusText);
       const j = await r.json();
       const rows = j.items || [];
 
@@ -125,7 +128,7 @@
       for(const k of keys){ host.appendChild(renderGroup(mode, k, grouped[k])); }
       host.appendChild(renderGrandTotal(rows));
     } catch(e) {
-      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message)}</div>`;
+      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message||String(e))}</div>`;
     }
   }
 
@@ -143,6 +146,13 @@
       (m[key] ||= []).push(it);
     }
     return m;
+  }
+
+  function groupTitle(mode, key){
+    if(mode==='offer')     return `Offer: ${escapeHtml(key)}`;
+    if(mode==='affiliate') return `Affiliate: ${escapeHtml(key)}`;
+    if(mode==='sub')       return `Sub: ${escapeHtml(key)}`;
+    return escapeHtml(key);
   }
 
   function aggregateRows(items){
@@ -173,45 +183,47 @@
     const el = document.createElement('div');
     el.className = 'group collapsed';
     el.innerHTML = `
-      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer">
-        <span class="chev">▸</span>
-        <span class="group-title" style="margin-left:8px"><b>${key}</b></span>
-        <span style="margin-left:auto">Totaal: ${fmt(t_tot)} • Acc: ${fmt(t_acc)} • ${pct(t_acc,t_tot).toFixed(1)}%</span>
+      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer; align-items:center; padding:10px; border-bottom:1px solid #eee">
+        <span class="chev" style="transition:transform .2s">▸</span>
+        <span class="group-title" style="margin-left:8px"><b>${groupTitle(mode, key)}</b></span>
+        <span style="margin-left:auto; font-size:13px">Totaal: ${fmt(t_tot)} • Acc: ${fmt(t_acc)} • ${pct(t_acc,t_tot).toFixed(1)}%</span>
       </div>
       <div class="group-body" style="padding:10px">
-        <table class="rules">
-          <thead>
-            <tr>
-              <th>Affiliate</th><th>Offer</th><th>Sub</th>
-              <th>Rule %</th><th>Target Marge</th><th>Actual Marge</th>
-              <th>Total</th><th>Accepted</th><th>Accept %</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => {
-              const rule = RULES_MAP?.[r.rule_id] || {};
-              const actualPct = pct(r.accepted, r.total);
-              const targetMargin = rule.target_margin || 15;
-              const actualMargin = r.actual_margin;
-              const color = (actualMargin !== null && actualMargin < targetMargin) ? '#d92d20' : '#10916f';
-              
-              return `
-                <tr>
-                  <td>${escapeHtml(r.affiliate_id)}</td>
-                  <td>${escapeHtml(r.offer_id)}</td>
-                  <td>${escapeHtml(r.sub_id)}</td>
-                  <td>${rule.percent_accept ?? '—'}%</td>
-                  <td>${rule.auto_pilot ? '🤖 ' : ''}${targetMargin}%</td>
-                  <td style="color:${actualMargin !== null ? color : 'inherit'}; font-weight:bold">
-                    ${actualMargin !== null ? actualMargin.toFixed(1) + '%' : '—'}
-                  </td>
-                  <td>${fmt(r.total)}</td>
-                  <td>${fmt(r.accepted)}</td>
-                  <td>${actualPct.toFixed(1)}%</td>
-                </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table class="rules">
+            <thead>
+              <tr>
+                <th>Affiliate</th><th>Offer</th><th>Sub</th>
+                <th>Rule %</th><th>Target Marge</th><th>Actual Marge</th>
+                <th>Total</th><th>Accepted</th><th>Accept %</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => {
+                const rule = RULES_MAP?.[r.rule_id] || {};
+                const actualAcceptPct = pct(r.accepted, r.total);
+                const targetMargin = rule.target_margin || 15;
+                const actualMargin = r.actual_margin;
+                const marginColor = (actualMargin !== null && actualMargin < targetMargin) ? '#d92d20' : '#10916f';
+                
+                return `
+                  <tr>
+                    <td>${escapeHtml(r.affiliate_id)}</td>
+                    <td>${escapeHtml(r.offer_id)}</td>
+                    <td>${escapeHtml(r.sub_id)}</td>
+                    <td>${rule.percent_accept ?? '—'}%</td>
+                    <td style="font-weight:bold">${rule.auto_pilot ? '🤖 ' : ''}${targetMargin}%</td>
+                    <td style="color:${actualMargin !== null ? marginColor : 'inherit'}; font-weight:bold">
+                      ${actualMargin !== null ? actualMargin.toFixed(1) + '%' : '—'}
+                    </td>
+                    <td>${fmt(r.total)}</td>
+                    <td>${fmt(r.accepted)}</td>
+                    <td>${actualAcceptPct.toFixed(1)}%</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
 
@@ -226,8 +238,8 @@
     let total = 0, accepted = 0;
     allRows.forEach(it => { total += it.total_leads; accepted += it.accepted_leads; });
     const wrap = document.createElement('div');
-    wrap.style.padding = '10px';
-    wrap.innerHTML = `<b>Totaal Selectie:</b> ${fmt(total)} leads • ${fmt(accepted)} accepted • ${pct(accepted,total).toFixed(1)}%`;
+    wrap.style.cssText = 'padding:16px; border-top:2px solid #eee; margin-top:10px; font-size:15px';
+    wrap.innerHTML = `<b>Totaal Selectie:</b> ${fmt(total)} leads • ${fmt(accepted)} accepted • <b>${pct(accepted,total).toFixed(1)}%</b>`;
     return wrap;
   }
 
