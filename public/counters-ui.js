@@ -6,7 +6,6 @@
   const mount = document.getElementById('counters-ui');
   if(!mount){ console.error('counters-ui mount not found'); return; }
 
-  // UI skeleton
   mount.innerHTML = `
     <div class="rules-wrap">
       <div class="rules-card">
@@ -22,11 +21,11 @@
           </select>
 
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="c_from" class="rules-input" type="date" aria-label="Datum van" style="width:170px">
-            <input id="c_to"   class="rules-input" type="date" aria-label="Datum t/m" style="width:170px">
-            <input id="c_aff"  class="rules-input" type="text" placeholder="Affiliate ID" aria-label="Affiliate ID" style="width:170px">
-            <input id="c_off"  class="rules-input" type="text" placeholder="Offer ID" aria-label="Offer ID" style="width:170px">
-            <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID (leeg of 'null')" aria-label="Sub ID" style="width:200px">
+            <input id="c_from" class="rules-input" type="date" style="width:170px">
+            <input id="c_to"   class="rules-input" type="date" style="width:170px">
+            <input id="c_aff"  class="rules-input" type="text" placeholder="Affiliate ID" style="width:170px">
+            <input id="c_off"  class="rules-input" type="text" placeholder="Offer ID" style="width:170px">
+            <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:200px">
           </div>
 
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -37,14 +36,16 @@
             <button id="c_run" class="rules-btn" type="button">Toon resultaten</button>
           </div>
         </div>
-
         <div id="c_groups" style="padding:12px 0"></div>
       </div>
     </div>
   `;
 
   const $ = (s, r=mount) => r.querySelector(s);
-
+  const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
+  const pct = (a,t)=> t>0 ? (100*a/t) : 0;
+  const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  
   $('#c_token').value = localStorage.getItem('rui_token') || '';
   $('#c_token').addEventListener('change', e=> localStorage.setItem('rui_token', e.target.value.trim()));
 
@@ -54,18 +55,6 @@
     localStorage.setItem('c_groupmode', selMode.value);
     runCounters();
   });
-
-  const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
-  const pct = (a,t)=> t>0 ? (100*a/t) : 0;
-  const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-  
-  function authHeaders(){
-    const t = $('#c_token').value.trim() || '';
-    return {'X-Admin-Token': t, 'Accept':'application/json'};
-  }
-  
-  const keyOrDash = v => (v===''||v===null||v===undefined) ? '—' : String(v);
-  function cssId(s){ return String(s).replace(/\s+/g,'-').replace(/[^a-zA-Z0-9_-]/g,''); }
 
   function setPreset(which){
     const d = new Date(); const pad = n=> String(n).padStart(2,'0');
@@ -81,91 +70,57 @@
   let RULES_MAP = null;
   async function ensureRules(){
     if(RULES_MAP) return RULES_MAP;
-    try{
-      const r = await fetch(API_RULES, { headers: authHeaders() });
-      if(!r.ok) throw 0;
+    try {
+      const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': $('#c_token').value.trim() } });
       const j = await r.json();
-      const items = j.items || [];
       RULES_MAP = {};
-      for(const it of items){
-        if(it.id) {
-          RULES_MAP[it.id] = { 
-            percent_accept: Number(it.percent_accept ?? 0),
-            auto_pilot: !!it.auto_pilot,
-            target_margin: Number(it.target_margin || 15)
-          };
-        }
-      }
-    }catch{ RULES_MAP = {}; }
+      (j.items || []).forEach(it => {
+        RULES_MAP[it.id] = { auto_pilot: !!it.auto_pilot, target_margin: Number(it.target_margin || 15), percent_accept: it.percent_accept };
+      });
+    } catch { RULES_MAP = {}; }
     return RULES_MAP;
   }
 
   async function runCounters(){
-    const q = new URLSearchParams();
-    if($('#c_from').value) q.set('date_from', $('#c_from').value);
-    if($('#c_to').value)   q.set('date_to',   $('#c_to').value);
-    if($('#c_aff').value)  q.set('affiliate_id', $('#c_aff').value);
-    if($('#c_off').value)  q.set('offer_id',     $('#c_off').value);
-    if($('#c_sub').value)  q.set('sub_id',       $('#c_sub').value);
-
     const host = $('#c_groups');
     host.innerHTML = `<div class="rules-empty">Laden…</div>`;
-
-    try{
+    try {
       await ensureRules();
-      const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: authHeaders() });
-      if(!r.ok) throw new Error(r.status+' '+r.statusText);
+      const q = new URLSearchParams({ 
+        date_from: $('#c_from').value, 
+        date_to: $('#c_to').value,
+        affiliate_id: $('#c_aff').value,
+        offer_id: $('#c_off').value,
+        sub_id: $('#c_sub').value
+      });
+
+      const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': $('#c_token').value.trim() } });
       const j = await r.json();
       const rows = j.items || [];
 
       if(!rows.length){ host.innerHTML = `<div class="rules-empty">Geen resultaten</div>`; return; }
 
       const mode = $('#c_groupmode').value;
-      const grouped = groupByMode(rows, mode);
-      const keys = Object.keys(grouped).sort((a,b)=> groupKeySort(a,b,mode));
+      const grouped = {};
+      rows.forEach(it => {
+        const key = mode === 'date' ? it.date : (it[mode + '_id'] || '—');
+        (grouped[key] ||= []).push(it);
+      });
 
       host.innerHTML = '';
-      for(const k of keys){ host.appendChild(renderGroup(mode, k, grouped[k])); }
+      Object.keys(grouped).sort((a,b)=> (mode==='date' ? b.localeCompare(a) : a.localeCompare(b))).forEach(k => {
+        host.appendChild(renderGroup(mode, k, grouped[k]));
+      });
       host.appendChild(renderGrandTotal(rows));
-    } catch(e) {
-      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message||String(e))}</div>`;
-    }
-  }
-
-  function groupKeySort(a,b,mode){
-    if(mode==='date') return b.localeCompare(a); 
-    if(a==='—' && b!=='—') return 1;
-    if(b==='—' && a!=='—') return -1;
-    return String(a).localeCompare(String(b), 'nl');
-  }
-
-  function groupByMode(rows, mode){
-    const m = {};
-    for(const it of rows){
-      const key = mode==='date' ? keyOrDash(it.date) : keyOrDash(it[mode + '_id']);
-      (m[key] ||= []).push(it);
-    }
-    return m;
-  }
-
-  function groupTitle(mode, key){
-    if(mode==='offer')     return `Offer: ${escapeHtml(key)}`;
-    if(mode==='affiliate') return `Affiliate: ${escapeHtml(key)}`;
-    if(mode==='sub')       return `Sub: ${escapeHtml(key)}`;
-    return escapeHtml(key);
+    } catch (e) { host.innerHTML = `<div class="rules-empty">Error: ${e.message}</div>`; }
   }
 
   function aggregateRows(items){
     const map = new Map();
     for(const it of items){
-      const aff = keyOrDash(it.affiliate_id);
-      const off = keyOrDash(it.offer_id);
-      const sub = keyOrDash(it.sub_id);
-      const rid = it.rule_id;
-      const key = `${aff}|${off}|${sub}|${rid}`;
-      
+      const key = `${it.affiliate_id}|${it.offer_id}|${it.sub_id}|${it.rule_id}`;
       const acc = map.get(key) || { 
-        affiliate_id: aff, offer_id: off, sub_id: sub, rule_id: rid,
+        affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, rule_id: it.rule_id,
         total: 0, accepted: 0, actual_margin: it.actual_margin 
       };
       acc.total += Number(it.total_leads || 0);
@@ -183,47 +138,36 @@
     const el = document.createElement('div');
     el.className = 'group collapsed';
     el.innerHTML = `
-      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer; align-items:center; padding:10px; border-bottom:1px solid #eee">
-        <span class="chev" style="transition:transform .2s">▸</span>
-        <span class="group-title" style="margin-left:8px"><b>${groupTitle(mode, key)}</b></span>
+      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer; padding:10px; border-bottom:1px solid #eee">
+        <span class="chev">▸</span>
+        <span class="group-title" style="margin-left:8px"><b>${key}</b></span>
         <span style="margin-left:auto; font-size:13px">Totaal: ${fmt(t_tot)} • Acc: ${fmt(t_acc)} • ${pct(t_acc,t_tot).toFixed(1)}%</span>
       </div>
       <div class="group-body" style="padding:10px">
-        <div class="table-wrap">
-          <table class="rules">
-            <thead>
-              <tr>
-                <th>Affiliate</th><th>Offer</th><th>Sub</th>
-                <th>Rule %</th><th>Target Marge</th><th>Actual Marge</th>
-                <th>Total</th><th>Accepted</th><th>Accept %</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(r => {
-                const rule = RULES_MAP?.[r.rule_id] || {};
-                const actualAcceptPct = pct(r.accepted, r.total);
-                const targetMargin = rule.target_margin || 15;
-                const actualMargin = r.actual_margin;
-                const marginColor = (actualMargin !== null && actualMargin < targetMargin) ? '#d92d20' : '#10916f';
-                
-                return `
-                  <tr>
-                    <td>${escapeHtml(r.affiliate_id)}</td>
-                    <td>${escapeHtml(r.offer_id)}</td>
-                    <td>${escapeHtml(r.sub_id)}</td>
-                    <td>${rule.percent_accept ?? '—'}%</td>
-                    <td style="font-weight:bold">${rule.auto_pilot ? '🤖 ' : ''}${targetMargin}%</td>
-                    <td style="color:${actualMargin !== null ? marginColor : 'inherit'}; font-weight:bold">
-                      ${actualMargin !== null ? actualMargin.toFixed(1) + '%' : '—'}
-                    </td>
-                    <td>${fmt(r.total)}</td>
-                    <td>${fmt(r.accepted)}</td>
-                    <td>${actualAcceptPct.toFixed(1)}%</td>
-                  </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
+        <table class="rules">
+          <thead>
+            <tr>
+              <th>Affiliate</th><th>Offer</th><th>Sub</th><th>Rule %</th>
+              <th>Target Marge</th><th>Actual Marge</th><th>Total</th><th>Accepted</th><th>Accept %</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const rule = RULES_MAP?.[r.rule_id] || {};
+              const target = rule.target_margin || 15;
+              const actual = r.actual_margin;
+              const color = (actual !== null && actual < target) ? '#d92d20' : '#10916f';
+              return `
+                <tr>
+                  <td>${escapeHtml(r.affiliate_id)}</td><td>${escapeHtml(r.offer_id)}</td><td>${escapeHtml(r.sub_id)}</td>
+                  <td>${rule.percent_accept ?? '—'}%</td>
+                  <td>${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
+                  <td style="color:${actual !== null ? color : 'inherit'}; font-weight:bold">${actual !== null ? actual.toFixed(1) + '%' : '—'}</td>
+                  <td>${fmt(r.total)}</td><td>${fmt(r.accepted)}</td><td>${pct(r.accepted,r.total).toFixed(1)}%</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
     `;
 
