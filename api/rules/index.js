@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const qs = new URLSearchParams({
-        fields: 'id,Omschrijving,affiliate_id,offer_id,sub_id,percent_accept,priority,active',
+        fields: 'id,Omschrijving,affiliate_id,offer_id,sub_id,percent_accept,priority,active,target_margin,min_volume,auto_pilot',
         sort: 'priority',
         limit: '200',
       });
