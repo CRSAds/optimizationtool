@@ -57,7 +57,7 @@
 
   const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
   const pct = (a,t)=> t>0 ? (100*a/t) : 0;
-  const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   
   function authHeaders(){
     const t = $('#c_token').value.trim() || '';
@@ -78,17 +78,14 @@
     $('#c_to').value   = toIso(to);
   }
 
-  // Uitgebreid voor Auto Pilot
   let RULES_MAP = null;
   async function ensureRules(){
     if(RULES_MAP) return RULES_MAP;
     try{
       const r = await fetch(API_RULES, { headers: authHeaders() });
-      if(!r.ok) throw 0;
       const j = await r.json();
-      const items = j.items || [];
       RULES_MAP = {};
-      for(const it of items){
+      (j.items || []).forEach(it => {
         if(it.id) {
           RULES_MAP[it.id] = { 
             percent_accept: Number(it.percent_accept ?? 0),
@@ -96,7 +93,7 @@
             target_margin: Number(it.target_margin || 15)
           };
         }
-      }
+      });
     }catch{ RULES_MAP = {}; }
     return RULES_MAP;
   }
@@ -114,29 +111,21 @@
 
     try{
       await ensureRules();
-
       const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: authHeaders() });
-      if(!r.ok) throw new Error(r.status+' '+r.statusText);
       const j = await r.json();
       const rows = j.items || [];
 
-      if(!rows.length){
-        host.innerHTML = `<div class="rules-empty">Geen resultaten</div>`;
-        return;
-      }
+      if(!rows.length){ host.innerHTML = `<div class="rules-empty">Geen resultaten</div>`; return; }
 
-      const mode = $('#c_groupmode').value; 
+      const mode = $('#c_groupmode').value;
       const grouped = groupByMode(rows, mode);
       const keys = Object.keys(grouped).sort((a,b)=> groupKeySort(a,b,mode));
 
       host.innerHTML = '';
-      for(const k of keys){
-        host.appendChild(renderGroup(mode, k, grouped[k]));
-      }
+      for(const k of keys){ host.appendChild(renderGroup(mode, k, grouped[k])); }
       host.appendChild(renderGrandTotal(rows));
-
-    }catch(e){
-      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message||String(e))}</div>`;
+    } catch(e) {
+      host.innerHTML = `<div class="rules-empty" style="color:#d92d20">Error ${escapeHtml(e.message)}</div>`;
     }
   }
 
@@ -144,29 +133,16 @@
     if(mode==='date') return b.localeCompare(a); 
     if(a==='—' && b!=='—') return 1;
     if(b==='—' && a!=='—') return -1;
-    const na = Number(a), nb = Number(b);
-    if(!Number.isNaN(na) && !Number.isNaN(nb)) return na-nb;
     return String(a).localeCompare(String(b), 'nl');
   }
 
   function groupByMode(rows, mode){
     const m = {};
     for(const it of rows){
-      const key =
-        mode==='offer'      ? keyOrDash(it.offer_id) :
-        mode==='affiliate' ? keyOrDash(it.affiliate_id) :
-        mode==='sub'        ? keyOrDash(it.sub_id) :
-        keyOrDash(it.date);
+      const key = mode==='date' ? keyOrDash(it.date) : keyOrDash(it[mode + '_id']);
       (m[key] ||= []).push(it);
     }
     return m;
-  }
-
-  function groupTitle(mode, key){
-    if(mode==='offer')     return `Offer: ${escapeHtml(key)}`;
-    if(mode==='affiliate') return `Affiliate: ${escapeHtml(key)}`;
-    if(mode==='sub')       return `Sub: ${escapeHtml(key)}`;
-    return escapeHtml(key);
   }
 
   function aggregateRows(items){
@@ -175,20 +151,14 @@
       const aff = keyOrDash(it.affiliate_id);
       const off = keyOrDash(it.offer_id);
       const sub = keyOrDash(it.sub_id);
-      const ruleId = it.rule_id;
-      const rp  = RULES_MAP?.[ruleId]?.percent_accept;
-      const rps = (rp===0 || rp) ? String(rp) : '—';
-      const key = `${aff}|${off}|${sub}|${rps}|${ruleId}`;
+      const rid = it.rule_id;
+      const key = `${aff}|${off}|${sub}|${rid}`;
+      
       const acc = map.get(key) || { 
-        affiliate_id: aff, 
-        offer_id: off, 
-        sub_id: sub, 
-        rule_percent: (rps==='—'?null:Number(rp)), 
-        rule_id: ruleId,
-        total: 0, 
-        accepted: 0 
+        affiliate_id: aff, offer_id: off, sub_id: sub, rule_id: rid,
+        total: 0, accepted: 0, actual_margin: it.actual_margin 
       };
-      acc.total     += Number(it.total_leads || 0);
+      acc.total += Number(it.total_leads || 0);
       acc.accepted += Number(it.accepted_leads || 0);
       map.set(key, acc);
     }
@@ -197,115 +167,75 @@
 
   function renderGroup(mode, key, items){
     const rows = aggregateRows(items);
-    let tot=0, acc=0;
-    for(const r of rows){ tot += r.total; acc += r.accepted; }
-    const p = pct(acc, tot);
+    let t_tot=0, t_acc=0;
+    rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; });
 
     const el = document.createElement('div');
     el.className = 'group collapsed';
-    el.dataset.key = key;
-    el.dataset.mode = mode;
-
     el.innerHTML = `
-      <div class="group-header" data-role="toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="body-${mode}-${cssId(key)}">
+      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer">
         <span class="chev">▸</span>
-        <span class="group-title">${groupTitle(mode, key)}</span>
-        <span class="group-sub" style="margin-left:auto">Totaal: ${fmt(tot)} • Accepted: ${fmt(acc)} • ${p.toFixed(1)}%</span>
+        <span class="group-title" style="margin-left:8px"><b>${key}</b></span>
+        <span style="margin-left:auto">Totaal: ${fmt(t_tot)} • Acc: ${fmt(t_acc)} • ${pct(t_acc,t_tot).toFixed(1)}%</span>
       </div>
-      <div class="group-body" id="body-${mode}-${cssId(key)}">
-        <div class="table-wrap" style="margin:0 12px">
-          <table class="rules">
-            <thead>
-              <tr>
-                <th>Affiliate</th>
-                <th>Offer</th>
-                <th>Sub</th>
-                <th>Rule %</th>
-                <th>Auto Pilot</th>
-                <th>Total</th>
-                <th>Accepted</th>
-                <th>Accept %</th>
-                <th>Δ</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(r=>{
-                const actual = pct(r.accepted, r.total);
-                const cfg    = (r.rule_percent===0 || r.rule_percent) ? Number(r.rule_percent) : null;
-                const delta  = (cfg===null) ? null : (actual - cfg);
-                const ruleMeta = RULES_MAP?.[r.rule_id];
-                
-                return `
-                  <tr>
-                    <td>${escapeHtml(r.affiliate_id)}</td>
-                    <td>${escapeHtml(r.offer_id)}</td>
-                    <td>${escapeHtml(r.sub_id)}</td>
-                    <td>${cfg===null ? '—' : (cfg.toFixed(0)+'%')}</td>
-                    <td style="text-align:center">
-                      ${ruleMeta?.auto_pilot ? `🤖 <small>(${ruleMeta.target_margin}%)</small>` : '—'}
-                    </td>
-                    <td>${fmt(r.total)}</td>
-                    <td>${fmt(r.accepted)}</td>
-                    <td>${actual.toFixed(1)}%</td>
-                    <td>${delta===null ? '—' : (delta>=0 ? '+' : '')}${delta?.toFixed(1)}%</td>
-                  </tr>`;
-              }).join('')}
-              <tr class="subtotal">
-                <td colspan="5" style="text-align:right;padding-right:10px">Totaal</td>
-                <td>${fmt(tot)}</td>
-                <td>${fmt(acc)}</td>
-                <td>${p.toFixed(1)}%</td>
-                <td>—</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="group-body" style="padding:10px">
+        <table class="rules">
+          <thead>
+            <tr>
+              <th>Affiliate</th><th>Offer</th><th>Sub</th>
+              <th>Rule %</th><th>Target Marge</th><th>Actual Marge</th>
+              <th>Total</th><th>Accepted</th><th>Accept %</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const rule = RULES_MAP?.[r.rule_id] || {};
+              const actualPct = pct(r.accepted, r.total);
+              const targetMargin = rule.target_margin || 15;
+              const actualMargin = r.actual_margin;
+              const color = (actualMargin !== null && actualMargin < targetMargin) ? '#d92d20' : '#10916f';
+              
+              return `
+                <tr>
+                  <td>${escapeHtml(r.affiliate_id)}</td>
+                  <td>${escapeHtml(r.offer_id)}</td>
+                  <td>${escapeHtml(r.sub_id)}</td>
+                  <td>${rule.percent_accept ?? '—'}%</td>
+                  <td>${rule.auto_pilot ? '🤖 ' : ''}${targetMargin}%</td>
+                  <td style="color:${actualMargin !== null ? color : 'inherit'}; font-weight:bold">
+                    ${actualMargin !== null ? actualMargin.toFixed(1) + '%' : '—'}
+                  </td>
+                  <td>${fmt(r.total)}</td>
+                  <td>${fmt(r.accepted)}</td>
+                  <td>${actualPct.toFixed(1)}%</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
     `;
 
-    const toggle = el.querySelector('[data-role=toggle]');
-    toggle.addEventListener('click', ()=>{
+    el.querySelector('[data-role=toggle]').addEventListener('click', () => {
       el.classList.toggle('collapsed');
-      const exp = !el.classList.contains('collapsed');
-      toggle.setAttribute('aria-expanded', String(exp));
-      el.querySelector('.chev').style.transform = exp ? 'rotate(90deg)' : 'rotate(0deg)';
+      el.querySelector('.chev').style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
     });
-    
     return el;
   }
 
   function renderGrandTotal(allRows){
     let total = 0, accepted = 0;
-    for(const it of allRows){
-      total     += Number(it.total_leads || 0);
-      accepted += Number(it.accepted_leads || 0);
-    }
-    const p = pct(accepted, total);
-
+    allRows.forEach(it => { total += it.total_leads; accepted += it.accepted_leads; });
     const wrap = document.createElement('div');
-    wrap.className = 'table-wrap';
-    wrap.style.margin = '12px';
-
-    wrap.innerHTML = `
-      <table class="rules">
-        <tbody>
-          <tr class="total">
-            <td style="text-align:right;padding-right:10px;font-weight:700">Totaal selectie</td>
-            <td style="width:140px">${fmt(total)}</td>
-            <td style="width:140px">${fmt(accepted)}</td>
-            <td style="width:140px">${p.toFixed(1)}%</td>
-          </tr>
-        </tbody>
-      </table>
-    `;
+    wrap.style.padding = '10px';
+    wrap.innerHTML = `<b>Totaal Selectie:</b> ${fmt(total)} leads • ${fmt(accepted)} accepted • ${pct(accepted,total).toFixed(1)}%`;
     return wrap;
   }
 
-  mount.addEventListener('click', (e)=>{
-    const btn = e.target.closest('.rules-btn.ghost[data-preset]'); if(!btn) return;
-    setPreset(btn.dataset.preset);
+  mount.addEventListener('click', e => {
+    const btn = e.target.closest('[data-preset]');
+    if(btn) setPreset(btn.dataset.preset);
   });
-  
+
   setPreset('last7');
   $('#c_run').addEventListener('click', runCounters);
 })();
