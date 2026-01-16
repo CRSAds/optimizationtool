@@ -1,7 +1,9 @@
 (function() {
   const API_URL = 'https://optimizationtool.vercel.app/api/rules';
-  
-  function initApp() {
+  const HARDCODED_TOKEN = "ditiseenlanggeheimtoken"; // Je token hier ingesteld
+
+  // Dit is de hoofdfunctie die we pas starten als de HTML er is
+  function startApp() {
     const mount = document.getElementById('rules-ui');
     if (!mount) return;
 
@@ -11,7 +13,7 @@
         <div class="rules-card">
           <div class="rules-toolbar">
             <span class="rules-label">Admin API</span>
-            <input id="rui_token" class="rules-input" type="password" style="width:180px" placeholder="X-Admin-Token">
+            <input id="rui_token" class="rules-input" type="password" style="width:180px" placeholder="Token">
             
             <div style="width:1px;height:24px;background:#e2e8f0;margin:0 8px"></div>
 
@@ -36,7 +38,17 @@
           <div class="table-wrap">
             <table class="rules">
               <colgroup>
-                 <col style="width:160px"> <col style="width:auto">  <col style="width:100px"> <col style="width:100px"> <col style="width:80px">  <col style="width:100px"> <col style="width:80px">  <col style="width:70px">  <col style="width:60px">  <col style="width:100px"> </colgroup>
+                 <col style="width:160px">
+                 <col style="width:auto">
+                 <col style="width:100px">
+                 <col style="width:100px">
+                 <col style="width:80px">
+                 <col style="width:100px">
+                 <col style="width:80px">
+                 <col style="width:70px">
+                 <col style="width:60px">
+                 <col style="width:100px">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Offer ID (Groep)</th>
@@ -57,7 +69,7 @@
           
           <div class="newbar">
             <span style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;">Nieuw:</span>
-            <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID (Verplicht)" style="width:120px;border-color:#93c5fd">
+            <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID" style="width:120px;border-color:#93c5fd">
             <input type="text" id="n_desc" class="rules-input" placeholder="Omschrijving" style="flex:1">
             <input type="text" id="n_aff"  class="rules-input" placeholder="Affiliate" style="width:100px">
             <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:100px">
@@ -75,9 +87,13 @@
     let CACHE = [];
     let OPEN_GROUPS = new Set(); 
 
-    // Init Token
+    // --- TOKEN LOGICA (Prefilled) ---
     const tInput = $('#rui_token');
-    tInput.value = localStorage.getItem('rui_token') || '';
+    // Pak uit storage OF gebruik de hardcoded waarde
+    tInput.value = localStorage.getItem('rui_token') || HARDCODED_TOKEN;
+    // Update direct storage voor het geval het de eerste keer is
+    localStorage.setItem('rui_token', tInput.value.trim());
+    
     tInput.addEventListener('change', () => localStorage.setItem('rui_token', tInput.value.trim()));
 
     function headers() {
@@ -116,7 +132,7 @@
         return;
       }
 
-      // 2. Groeperen op Offer ID
+      // 2. Groeperen
       const groups = {};
       filtered.forEach(it => {
         const oid = it.offer_id || 'Overig';
@@ -124,19 +140,19 @@
         groups[oid].push(it);
       });
 
-      // 3. Sorteren van keys
+      // 3. Sorteren
       const keys = Object.keys(groups).sort((a,b) => {
         if(a === 'Overig') return 1;
         if(b === 'Overig') return -1;
         return Number(a) - Number(b);
       });
 
-      // 4. HTML Bouwen
+      // 4. Bouwen
       keys.forEach(key => {
         const items = groups[key];
-        const isOpen = OPEN_GROUPS.has(key) || term.length > 0;
+        const isOpen = OPEN_GROUPS.has(key) || term.length > 0; // Zoeken = openklappen
         
-        // Group Header Row
+        // Header
         const headerTr = document.createElement('tr');
         headerTr.className = `group-row ${isOpen ? 'open' : ''}`;
         headerTr.dataset.key = key;
@@ -149,7 +165,7 @@
         `;
         tbody.appendChild(headerTr);
 
-        // Child Rows
+        // Rows
         items.forEach(it => {
           const tr = document.createElement('tr');
           tr.className = `rule-row ${isOpen ? 'visible' : ''}`;
@@ -160,7 +176,8 @@
             : `<span class="badge badge-off">UIT</span>`;
 
           tr.innerHTML = `
-            <td></td> <td><input type="text" value="${esc(readDesc(it))}" data-k="description"></td>
+            <td></td>
+            <td><input type="text" value="${esc(readDesc(it))}" data-k="description"></td>
             <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
             <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
             <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
@@ -187,7 +204,7 @@
 
     // --- EVENTS ---
     tbody.addEventListener('click', (e) => {
-      // Group toggle
+      // Toggle Groep
       const header = e.target.closest('tr.group-row');
       if(header){
         const key = header.dataset.key;
@@ -208,12 +225,10 @@
         const item = CACHE.find(i => i.id == id);
         if(!item) return;
 
-        // UI Update (Optimistic)
         const newState = !item.auto_pilot;
         item.auto_pilot = newState;
         autoCol.innerHTML = newState ? `<span class="badge badge-auto">AAN</span>` : `<span class="badge badge-off">UIT</span>`;
 
-        // API Call (Silent)
         try {
           await fetch(API_URL, {
             method: 'PATCH',
@@ -222,13 +237,13 @@
           });
         } catch(err) {
           alert('Fout: ' + err);
-          item.auto_pilot = !newState; // Revert
+          item.auto_pilot = !newState; 
           render();
         }
         return;
       }
 
-      // Buttons
+      // Knoppen
       const btn = e.target.closest('button');
       if (!btn) return;
       
@@ -311,12 +326,13 @@
       }
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initApp);
-    } else {
-      initApp();
-    }
+    loadRules();
   }
 
-  initApp();
+  // --- START LOGICA (Veilig) ---
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startApp);
+  } else {
+    startApp();
+  }
 })();
