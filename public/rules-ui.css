@@ -10,8 +10,8 @@
   --ok:#10916f;
   --danger:#d92d20;
   --border:#e2e8f0;
-  --thead:#e9eef6;
-  --shadow:0 2px 10px rgb(30 41 59 / .06);
+  --thead:#f1f5f9; /* Iets lichter voor compacte look */
+  --shadow:0 1px 3px rgb(30 41 59 / .1);
 }
 
 *{box-sizing:border-box}
@@ -19,51 +19,54 @@ body{
   font-family:'Inter',system-ui,sans-serif;
   background:var(--bg);
   color:var(--text);
+  font-size: 13px; /* Kleiner basisfont voor meer overzicht */
+  margin: 0;
 }
 
 /* =========================================================
-   WRAPPER & TOOLBAR
+   WRAPPER & TOOLBAR (Compacter gemaakt)
    ========================================================= */
 .rules-wrap{
-  max-width: 1360px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 28px 28px 44px 28px;
+  padding: 15px; /* Minder padding rondom */
 }
 .rules-card{
   background:var(--panel);
   border:1px solid var(--border);
-  border-radius:18px;
-  margin-bottom:28px;
+  border-radius:12px;
+  margin-bottom:20px;
   box-shadow:var(--shadow);
 }
 .rules-toolbar{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  gap:12px;
-  padding:16px 16px 10px 16px;
+  gap:8px;
+  padding:10px 15px;
   border-bottom:1px solid var(--border);
 }
-.rules-label{font-size:13px;color:var(--muted)}
+.rules-label{font-size:12px;color:var(--muted)}
 .rules-input{
   background:var(--panel-2);
-  border:1.5px solid var(--border);
+  border:1px solid var(--border);
   color:var(--text);
-  border-radius:12px;
-  height:40px;
-  padding:0 14px;
+  border-radius:8px;
+  height:32px; /* Lager voor compactheid */
+  padding:0 10px;
   outline:none;
-  font-size:14px;
-  min-width:220px;
+  font-size:13px;
+  min-width:120px;
 }
 .rules-input:focus{border-color:var(--brand);background:#fff}
+
 .rules-btn{
-  height:40px;
-  padding:0 18px;
-  border-radius:12px;
-  border:1.5px solid var(--brand);
+  height:32px;
+  padding:0 12px;
+  border-radius:8px;
+  border:1px solid var(--brand);
   background:var(--brand);
-  color:#fff;font-weight:600;font-size:14px;cursor:pointer;
+  color:#fff;font-weight:600;font-size:12px;cursor:pointer;
 }
 .rules-btn.ghost{background:#fff;color:var(--brand)}
 .rules-btn.ok{background:var(--ok);border-color:var(--ok)}
@@ -71,148 +74,124 @@ body{
 .rules-btn:hover{filter:brightness(1.05)}
 
 /* =========================================================
-   GROUPS (strakke randen, marge L/R; geen verticale gap)
+   BADGES (Nieuw voor visuele status)
+   ========================================================= */
+.badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  display: inline-block;
+  white-space: nowrap;
+}
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-danger { background: #fee2e2; color: #991b1b; }
+.badge-auto { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+
+/* =========================================================
+   GROUPS
    ========================================================= */
 .group{
   border:1px solid var(--border);
-  border-radius:0;
-  margin:0 12px;      /* witruimte links/rechts binnen de card */
+  border-radius:6px;
+  margin:0 10px 5px 10px;
   overflow:hidden;
 }
-.group + .group{ margin-top:0; }
 .group-header{
-  display:flex;align-items:center;gap:12px;
+  display:flex;align-items:center;gap:10px;
   background:var(--thead);
   cursor:pointer;
-  font-size:16px;font-weight:700;color:var(--text);
-  border-bottom:1px solid var(--border);
-  padding:14px 16px;
-  min-height:48px;
+  font-size:14px;font-weight:700;color:var(--text);
+  padding:8px 12px;
+  min-height:36px; /* Lagere header */
 }
-.group-header:hover{ filter:brightness(0.98); }
-.group-title{font-weight:700}
-.group-sub{margin-left:auto;color:var(--muted);font-size:13px}
-.chev{width:18px;height:18px;transform:rotate(-90deg);transition:transform .15s}
-.group.collapsed .chev{transform:rotate(0deg)}
+.group-header:hover{ background:#e2e8f0; }
+.group-sub{margin-left:auto;color:var(--muted);font-size:11px;font-weight:400}
+.chev{width:14px;height:14px;transition:transform .15s}
+.group.collapsed .chev{transform:rotate(-90deg)}
 .group-body{
-  padding:12px 16px 18px 16px;
+  padding:0; /* Geen padding hier zodat tabel strak aansluit */
   display:none;
 }
 .group:not(.collapsed) .group-body{display:block}
 
 /* =========================================================
-   TABLE (gedeeld door Rules & Counters)
+   TABLE (Compactere rijen)
    ========================================================= */
 .table-wrap{
   overflow-x:auto;
-  padding:6px 8px 0;
   background:#fff;
-  border-radius:12px;
-  border:1px solid var(--border);
 }
-table.rules{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+table.rules{width:100%;border-collapse:collapse;font-size:12px}
 table.rules thead th{
   position:sticky;top:0;z-index:1;
-  background:var(--thead);
-  color:var(--text);
+  background:#f8fafc;
+  color:var(--muted);
   text-align:left;
-  padding:10px 14px;
-  white-space:nowrap;
+  padding:6px 10px;
   border-bottom:1px solid var(--border);
-  font-size:12px;
-  letter-spacing:.2px;
+  font-size:10px;
+  text-transform:uppercase;
 }
 table.rules tbody td{
-  background:#fff;
-  padding:10px 14px;
+  padding:4px 10px; /* Minimale padding voor compactheid */
   border-bottom:1px solid var(--border);
+  height: 32px;
 }
-table.rules tbody tr:nth-child(odd) td{background:#f7faff}
-table.rules tbody tr:hover td{background:#eef4ff}
+table.rules tbody tr:hover td{background:#f1f5f9}
 
-/* Inputs in rules-tabel (priority is verwijderd) */
+/* Inputs in tabel compact */
 table.rules input[type=text], table.rules input[type=number]{
   width:100%;
   background:#fff;
-  border:1.5px solid var(--border);
-  border-radius:9px;
-  height:34px;
-  padding:0 10px;
-  font-size:14px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  height:26px; /* Zeer compacte inputs */
+  padding:0 8px;
+  font-size:12px;
 }
 
-/* kolombreedtes – herverdeeld */
-table.rules input[data-k="description"]{max-width:300px}
+/* Kolombreedtes */
+table.rules input[data-k="description"]{max-width:280px}
 table.rules input[data-k="affiliate_id"],
 table.rules input[data-k="sub_id"],
-table.rules input[data-k="offer_id"]{max-width:120px}
-table.rules input[data-k="percent_accept"]{max-width:86px}
+table.rules input[data-k="offer_id"]{max-width:80px}
+table.rules input[data-k="percent_accept"]{max-width:60px}
 
-/* algemene UI */
-.chk{width:18px;height:18px;vertical-align:middle}
-.row-actions{display:flex;gap:8px}
+.chk{width:16px;height:16px;vertical-align:middle}
+.row-actions{display:flex;gap:4px}
 
 /* =========================================================
-   NEW ROW BAR
+   NEW ROW BAR ( Sticky onderaan )
    ========================================================= */
 .newbar{
-  position: sticky;
-  left:0; right:0; bottom:0;
-  display:flex; gap:10px; align-items:center; flex-wrap:nowrap;
-  background:linear-gradient(180deg, #ffffff, #f8fbff);
-  padding:10px 12px;
-  border:1px solid var(--border);
-  border-radius:10px;
-  margin-top:12px;
+  position: sticky; bottom:0;
+  display:flex; gap:8px; align-items:center;
+  background:#fff;
+  padding:8px 12px;
+  border-top:2px solid var(--brand);
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
 }
-.newbar .rules-input{height:34px;font-size:14px;min-width:auto}
-.newbar .w-desc{width:260px}
-.newbar .w-offer{width:140px}     /* NIEUW: breedte voor offer veld */
-.newbar .w-sm{width:140px}
-.newbar .w-xs{width:86px}
-
-/* hint onder groep */
-.hint{margin:8px 2px 0;color:var(--muted);font-size:13px}
+.newbar .rules-input{height:28px;font-size:12px}
 
 /* empty / errors */
-.rules-empty{padding:24px;color:var(--muted);text-align:center;font-size:16px}
+.rules-empty{padding:20px;color:var(--muted);text-align:center;font-size:13px}
 
 /* =========================================================
-   RESPONSIVE
+   COUNTERS SPECIFIEKE TINTEN
    ========================================================= */
-@media (max-width: 900px){
-  .rules-wrap{padding:14px}
-  .rules-input{min-width:160px}
-  table.rules input[data-k="description"]{max-width:220px}
-}
-
-/* =========================================================
-   COUNTERS SPECIFIEKE TINTEN (subtotaal + totaal)
-   ========================================================= */
-/* Subtotaalrijen in de per-groep tabellen */
 #counters-ui tr.subtotal td {
-  background: #fdedf1;
+  background: #f8fafc;
   font-weight: 600;
-  color: #1e293b;
+  border-top: 1px solid var(--border);
 }
 
-/* Totaal selectie (onderaan alle groepen) */
-#counters-ui tr.total td {
-  background: #fad9e1;
+#counters-ui .total-summary {
+  padding: 12px 16px;
+  background: var(--brand);
+  color: #fff;
   font-weight: 700;
-  color: #1e293b;
-  padding: 0;                /* geen interne witruimte */
-  height: 44px;              /* vaste hoogte voor nette spacing */
-}
-
-#counters-ui tr.total td:first-child {
-  border-radius: 0 0 0 12px; /* linker onderhoek afgerond */
-}
-#counters-ui tr.total td:last-child {
-  border-radius: 0 0 12px 0; /* rechter onderhoek afgerond */
-}
-
-/* Alleen in counters UI: geen padding in table-wrap zodat total-row strak aansluit */
-#counters-ui .table-wrap {
-  padding: 0;
+  border-radius: 0 0 12px 12px;
+  display: flex;
+  justify-content: space-between;
 }
