@@ -1,197 +1,252 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root{
-  --bg:#f8fafc;
-  --panel:#fff;
-  --panel-2:#f1f5f9;
-  --text:#1e293b;
-  --muted:#64748b;
-  --brand:#2563eb;
-  --ok:#10916f;
-  --danger:#d92d20;
-  --border:#e2e8f0;
-  --thead:#f1f5f9; /* Iets lichter voor compacte look */
-  --shadow:0 1px 3px rgb(30 41 59 / .1);
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --input-bg: #f1f5f9;
+  --text: #1e293b;
+  --muted: #64748b;
+  --brand: #2563eb;
+  --brand-light: #eff6ff;
+  --ok: #10916f;
+  --danger: #d92d20;
+  --border: #e2e8f0;
+  --thead: #f8fafc;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-*{box-sizing:border-box}
+*{ box-sizing:border-box; }
+
 body{
-  font-family:'Inter',system-ui,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  font-size: 13px; /* Kleiner basisfont voor meer overzicht */
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
   margin: 0;
 }
 
-/* =========================================================
-   WRAPPER & TOOLBAR (Compacter gemaakt)
-   ========================================================= */
-.rules-wrap{
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 15px; /* Minder padding rondom */
-}
-.rules-card{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:12px;
-  margin-bottom:20px;
-  box-shadow:var(--shadow);
-}
-.rules-toolbar{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  padding:10px 15px;
-  border-bottom:1px solid var(--border);
-}
-.rules-label{font-size:12px;color:var(--muted)}
-.rules-input{
-  background:var(--panel-2);
-  border:1px solid var(--border);
-  color:var(--text);
-  border-radius:8px;
-  height:32px; /* Lager voor compactheid */
-  padding:0 10px;
-  outline:none;
-  font-size:13px;
-  min-width:120px;
-}
-.rules-input:focus{border-color:var(--brand);background:#fff}
-
-.rules-btn{
-  height:32px;
-  padding:0 12px;
-  border-radius:8px;
-  border:1px solid var(--brand);
-  background:var(--brand);
-  color:#fff;font-weight:600;font-size:12px;cursor:pointer;
-}
-.rules-btn.ghost{background:#fff;color:var(--brand)}
-.rules-btn.ok{background:var(--ok);border-color:var(--ok)}
-.rules-btn.danger{background:var(--danger);border-color:var(--danger)}
-.rules-btn:hover{filter:brightness(1.05)}
-
-/* =========================================================
-   BADGES (Nieuw voor visuele status)
-   ========================================================= */
-.badge {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 11px;
-  display: inline-block;
-  white-space: nowrap;
-}
-.badge-ok { background: #dcfce7; color: #166534; }
-.badge-danger { background: #fee2e2; color: #991b1b; }
-.badge-auto { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
-
-/* =========================================================
-   GROUPS
-   ========================================================= */
-.group{
-  border:1px solid var(--border);
-  border-radius:6px;
-  margin:0 10px 5px 10px;
-  overflow:hidden;
-}
-.group-header{
-  display:flex;align-items:center;gap:10px;
-  background:var(--thead);
-  cursor:pointer;
-  font-size:14px;font-weight:700;color:var(--text);
-  padding:8px 12px;
-  min-height:36px; /* Lagere header */
-}
-.group-header:hover{ background:#e2e8f0; }
-.group-sub{margin-left:auto;color:var(--muted);font-size:11px;font-weight:400}
-.chev{width:14px;height:14px;transition:transform .15s}
-.group.collapsed .chev{transform:rotate(-90deg)}
-.group-body{
-  padding:0; /* Geen padding hier zodat tabel strak aansluit */
-  display:none;
-}
-.group:not(.collapsed) .group-body{display:block}
-
-/* =========================================================
-   TABLE (Compactere rijen)
-   ========================================================= */
-.table-wrap{
-  overflow-x:auto;
-  background:#fff;
-}
-table.rules{width:100%;border-collapse:collapse;font-size:12px}
-table.rules thead th{
-  position:sticky;top:0;z-index:1;
-  background:#f8fafc;
-  color:var(--muted);
-  text-align:left;
-  padding:6px 10px;
-  border-bottom:1px solid var(--border);
-  font-size:10px;
-  text-transform:uppercase;
-}
-table.rules tbody td{
-  padding:4px 10px; /* Minimale padding voor compactheid */
-  border-bottom:1px solid var(--border);
-  height: 32px;
-}
-table.rules tbody tr:hover td{background:#f1f5f9}
-
-/* Inputs in tabel compact */
-table.rules input[type=text], table.rules input[type=number]{
-  width:100%;
-  background:#fff;
-  border:1px solid var(--border);
-  border-radius:6px;
-  height:26px; /* Zeer compacte inputs */
-  padding:0 8px;
-  font-size:12px;
-}
-
-/* Kolombreedtes */
-table.rules input[data-k="description"]{max-width:280px}
-table.rules input[data-k="affiliate_id"],
-table.rules input[data-k="sub_id"],
-table.rules input[data-k="offer_id"]{max-width:80px}
-table.rules input[data-k="percent_accept"]{max-width:60px}
-
-.chk{width:16px;height:16px;vertical-align:middle}
-.row-actions{display:flex;gap:4px}
-
-/* =========================================================
-   NEW ROW BAR ( Sticky onderaan )
-   ========================================================= */
-.newbar{
-  position: sticky; bottom:0;
-  display:flex; gap:8px; align-items:center;
-  background:#fff;
-  padding:8px 12px;
-  border-top:2px solid var(--brand);
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-}
-.newbar .rules-input{height:28px;font-size:12px}
-
-/* empty / errors */
-.rules-empty{padding:20px;color:var(--muted);text-align:center;font-size:13px}
-
-/* =========================================================
-   COUNTERS SPECIFIEKE TINTEN
-   ========================================================= */
-#counters-ui tr.subtotal td {
-  background: #f8fafc;
-  font-weight: 600;
-  border-top: 1px solid var(--border);
-}
-
-#counters-ui .total-summary {
-  padding: 12px 16px;
-  background: var(--brand);
-  color: #fff;
-  font-weight: 700;
-  border-radius: 0 0 12px 12px;
+/* --- WRAPPER & CARD --- */
+.rules-wrap{ 
+  max-width: 1600px; 
+  margin: 0 auto; 
+  padding: 20px; 
+  height: 100vh; /* Volledige hoogte gebruiken */
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+}
+
+.rules-card{ 
+  background: var(--panel); 
+  border: 1px solid var(--border); 
+  border-radius: 12px; 
+  box-shadow: var(--shadow); 
+  display: flex; 
+  flex-direction: column; 
+  overflow: hidden; /* Zorgt dat toolbar en footer vast blijven zitten */
+  flex: 1;
+}
+
+/* --- TOOLBAR (Bovenkant) --- */
+.rules-toolbar{
+  display: flex; 
+  flex-wrap: wrap; 
+  align-items: center; 
+  gap: 12px; 
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border); 
+  background: #fff;
+  z-index: 20;
+}
+
+.rules-label{ font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+
+.rules-input{
+  background: var(--input-bg); 
+  border: 1px solid var(--border); 
+  color: var(--text);
+  border-radius: 6px; 
+  height: 32px; 
+  padding: 0 10px; 
+  outline: none; 
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.rules-input:focus{ border-color: var(--brand); background: #fff; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+
+/* --- KNOPPEN --- */
+.rules-btn{
+  height: 32px; 
+  padding: 0 14px; 
+  border-radius: 6px; 
+  border: 1px solid transparent;
+  background: var(--brand); 
+  color: #fff; 
+  font-weight: 600; 
+  font-size: 12px; 
+  cursor: pointer;
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center;
+  transition: all 0.1s;
+}
+.rules-btn:hover{ filter: brightness(1.05); }
+.rules-btn:active{ transform: translateY(1px); }
+
+.rules-btn.ghost{ background: transparent; color: var(--text); border: 1px solid var(--border); }
+.rules-btn.ghost:hover{ background: var(--input-bg); }
+
+.rules-btn.ok{ background: var(--ok); }
+.rules-btn.danger{ background: var(--danger); }
+
+/* --- BADGES (Labels) --- */
+.badge { 
+  padding: 4px 8px; 
+  border-radius: 6px; 
+  font-weight: 700; 
+  font-size: 10px; 
+  display: inline-block; 
+  white-space: nowrap; 
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.badge-auto { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+.badge-off  { background: #f1f5f9; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+/* --- TABEL LAYOUT --- */
+.table-wrap{ 
+  flex: 1; 
+  overflow-y: auto; /* Scrollen binnen de tabel, niet de hele pagina */
+  background: #fff; 
+  position: relative;
+}
+
+table.rules{ 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: 13px; 
+}
+
+/* Headers - Blijven bovenaan plakken */
+table.rules thead th{
+  position: sticky; 
+  top: 0; 
+  z-index: 10; 
+  background: var(--thead); 
+  color: var(--muted);
+  text-align: left; 
+  padding: 10px 12px; 
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; 
+  text-transform: uppercase; 
+  font-weight: 700; 
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+/* --- GROEP RIJEN (ACCORDION) --- */
+tr.group-row { 
+  cursor: pointer; 
+  background: #f8fafc; 
+  transition: background 0.15s;
+}
+tr.group-row:hover { background: #f1f5f9; }
+tr.group-row td {
+  padding: 12px; 
+  border-bottom: 1px solid var(--border);
+  font-weight: 600; 
+  color: var(--text); 
+  font-size: 14px;
+}
+
+/* Pijltje animatie */
+.group-expander {
+  display: inline-block; 
+  width: 24px; 
+  height: 24px; 
+  line-height: 24px; 
+  text-align: center;
+  margin-right: 8px; 
+  color: var(--muted);
+  transition: transform 0.2s ease;
+  border-radius: 4px;
+}
+tr.group-row:hover .group-expander { background: #e2e8f0; color: var(--text); }
+tr.group-row.open .group-expander { transform: rotate(90deg); color: var(--brand); }
+
+/* --- REGEL RIJEN (De echte data) --- */
+tr.rule-row { display: none; background: #fff; }
+tr.rule-row.visible { display: table-row; }
+
+tr.rule-row td {
+  padding: 6px 10px; 
+  border-bottom: 1px solid #f1f5f9; 
+  vertical-align: middle;
+  height: 44px;
+}
+/* Visuele verbinding met de groep (indentatie) */
+tr.rule-row td:first-child { 
+  position: relative;
+}
+/* Grijs lijntje links voor hiërarchie */
+tr.rule-row td:first-child::before {
+  content: ''; position: absolute; left: 22px; top: 0; bottom: 0;
+  width: 2px; background: #e2e8f0;
+}
+
+/* Inputs in de tabel */
+table.rules input[type=text], table.rules input[type=number]{
+  width: 100%; 
+  background: #fff; 
+  border: 1px solid var(--border); 
+  border-radius: 5px;
+  height: 30px; 
+  padding: 0 8px; 
+  font-size: 12px; 
+  transition: border .2s;
+}
+table.rules input:focus { border-color: var(--brand); }
+
+/* Auto Pilot Kolom (Klikbaar) */
+.col-autopilot { 
+  cursor: pointer; 
+  transition: transform 0.1s; 
+}
+.col-autopilot:active { transform: scale(0.95); }
+
+/* Actie Knoppen (Save/Del) */
+.row-actions { 
+  display: flex; 
+  gap: 6px; 
+  opacity: 0.3; 
+  transition: opacity 0.2s; 
+}
+tr.rule-row:hover .row-actions { opacity: 1; }
+
+/* --- NEW BAR (Footer) --- */
+.newbar{
+  position: sticky; 
+  bottom: 0; 
+  z-index: 30; 
+  background: #fff;
+  padding: 12px 16px; 
+  border-top: 1px solid var(--border);
+  display: flex; 
+  gap: 10px; 
+  align-items: center; 
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.04);
+}
+
+.rules-empty{ 
+  padding: 60px; 
+  color: var(--muted); 
+  text-align: center; 
+  font-style: italic; 
+}
+
+/* Checkbox */
+.chk { 
+  accent-color: var(--brand); 
+  width: 18px; 
+  height: 18px; 
+  cursor: pointer; 
 }
