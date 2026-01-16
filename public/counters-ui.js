@@ -1,3 +1,4 @@
+// public/counters-ui.js
 (() => {
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
@@ -10,38 +11,43 @@
     <div class="rules-wrap">
       <div class="rules-card">
         <div class="rules-toolbar">
-          <span class="rules-label">Admin API • X-Admin-Token</span>
-          <input id="c_token" class="rules-input" type="password" style="width:260px" aria-label="Admin token">
+          <span class="rules-label">Admin Token</span>
+          <input id="c_token" class="rules-input" type="password" style="width:200px">
 
-          <select id="c_groupmode" class="rules-input" style="width:190px" aria-label="Group by">
-            <option value="date">Group: Datum</option>
-            <option value="offer">Group: Offer</option>
-            <option value="affiliate">Group: Affiliate</option>
-            <option value="sub">Group: Sub</option>
+          <select id="c_groupmode" class="rules-input" style="width:160px">
+            <option value="date">Groep: Datum</option>
+            <option value="offer">Groep: Offer</option>
+            <option value="affiliate">Groep: Affiliate</option>
+            <option value="sub">Groep: Sub</option>
           </select>
 
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="c_from" class="rules-input" type="date" style="width:170px">
-            <input id="c_to"   class="rules-input" type="date" style="width:170px">
-            <input id="c_aff"  class="rules-input" type="text" placeholder="Affiliate ID" style="width:170px">
-            <input id="c_off"  class="rules-input" type="text" placeholder="Offer ID" style="width:170px">
-            <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:200px">
-          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1">
+            <input id="c_from" class="rules-input" type="date" style="width:140px">
+            <input id="c_to"   class="rules-input" type="date" style="width:140px">
+            
+            <div style="border-left:1px solid #e2e8f0; height:24px; margin:0 4px"></div>
 
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="rules-btn ghost" data-preset="today"      type="button">Vandaag</button>
-            <button class="rules-btn ghost" data-preset="yesterday" type="button">Gisteren</button>
-            <button class="rules-btn ghost" data-preset="last7"      type="button">Laatste 7 dagen</button>
-            <button class="rules-btn ghost" data-preset="month"      type="button">Deze maand</button>
-            <button id="c_run" class="rules-btn" type="button">Toon resultaten</button>
+            <input id="c_aff"  class="rules-input" type="text" placeholder="Affiliate" style="width:100px">
+            <input id="c_off"  class="rules-input" type="text" placeholder="Offer" style="width:100px">
+            <input id="c_sub"  class="rules-input" type="text" placeholder="Sub" style="width:100px">
           </div>
+          
+          <button id="c_run" class="rules-btn" type="button">Toon resultaten</button>
         </div>
-        <div id="c_groups" style="padding:12px 0"></div>
+        
+        <div style="padding:10px 15px; display:flex; gap:8px; background:#f8fafc; border-bottom:1px solid #e2e8f0">
+           <button class="badge badge-auto" data-preset="today" style="border:none;cursor:pointer">Vandaag</button>
+           <button class="badge badge-auto" data-preset="yesterday" style="border:none;cursor:pointer">Gisteren</button>
+           <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
+           <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
+        </div>
+
+        <div id="c_groups" style="padding:15px 0"></div>
       </div>
     </div>
   `;
 
-  const $ = (s, r=mount) => r.querySelector(s);
+  const $ = (s) => mount.querySelector(s);
   const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
   const pct = (a,t)=> t>0 ? (100*a/t) : 0;
   const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
@@ -138,42 +144,66 @@
     const el = document.createElement('div');
     el.className = 'group collapsed';
     el.innerHTML = `
-      <div class="group-header" data-role="toggle" style="display:flex; cursor:pointer; padding:10px; border-bottom:1px solid #eee">
+      <div class="group-header" data-role="toggle">
         <span class="chev">▸</span>
-        <span class="group-title" style="margin-left:8px"><b>${key}</b></span>
-        <span style="margin-left:auto; font-size:13px">Totaal: ${fmt(t_tot)} • Acc: ${fmt(t_acc)} • ${pct(t_acc,t_tot).toFixed(1)}%</span>
+        <span class="group-title"><b>${key}</b></span>
+        <span class="group-sub">
+          Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)
+        </span>
       </div>
-      <div class="group-body" style="padding:10px">
-        <table class="rules">
-          <thead>
-            <tr>
-              <th>Affiliate</th><th>Offer</th><th>Sub</th><th>Rule %</th>
-              <th>Target Marge</th><th>Actual Marge</th><th>Total</th><th>Accepted</th><th>Accept %</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => {
-              const rule = RULES_MAP?.[r.rule_id] || {};
-              const target = rule.target_margin || 15;
-              const actual = r.actual_margin;
-              const color = (actual !== null && actual < target) ? '#d92d20' : '#10916f';
-              return `
-                <tr>
-                  <td>${escapeHtml(r.affiliate_id)}</td><td>${escapeHtml(r.offer_id)}</td><td>${escapeHtml(r.sub_id)}</td>
-                  <td>${rule.percent_accept ?? '—'}%</td>
-                  <td>${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
-                  <td style="color:${actual !== null ? color : 'inherit'}; font-weight:bold">${actual !== null ? actual.toFixed(1) + '%' : '—'}</td>
-                  <td>${fmt(r.total)}</td><td>${fmt(r.accepted)}</td><td>${pct(r.accepted,r.total).toFixed(1)}%</td>
-                </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+      <div class="group-body">
+        <div class="table-wrap">
+          <table class="rules">
+            <thead>
+              <tr>
+                <th style="width:100px">Affiliate</th>
+                <th style="width:100px">Offer</th>
+                <th style="width:100px">Sub</th>
+                <th style="width:80px">Rule %</th>
+                <th style="width:100px">Target</th>
+                <th style="width:100px">Actual Marge</th>
+                <th style="width:80px">Total</th>
+                <th style="width:80px">Accepted</th>
+                <th style="width:80px">Acc %</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => {
+                const rule = RULES_MAP?.[r.rule_id] || {};
+                const target = rule.target_margin || 15;
+                const actual = r.actual_margin;
+                
+                // KLEUR LOGICA
+                const isDanger = (actual !== null && actual < target);
+                const marginBadge = actual !== null 
+                  ? `<span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${actual.toFixed(1)}%</span>`
+                  : '—';
+                
+                const autoIcon = rule.auto_pilot ? '🤖 ' : '';
+
+                return `
+                  <tr>
+                    <td>${escapeHtml(r.affiliate_id)}</td>
+                    <td>${escapeHtml(r.offer_id)}</td>
+                    <td>${escapeHtml(r.sub_id)}</td>
+                    <td style="color:var(--muted)">${rule.percent_accept ?? '—'}%</td>
+                    <td style="font-weight:600;color:var(--brand)">${autoIcon}${target}%</td>
+                    <td>${marginBadge}</td>
+                    <td>${fmt(r.total)}</td>
+                    <td>${fmt(r.accepted)}</td>
+                    <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
 
     el.querySelector('[data-role=toggle]').addEventListener('click', () => {
       el.classList.toggle('collapsed');
-      el.querySelector('.chev').style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
+      const chev = el.querySelector('.chev');
+      chev.style.transform = el.classList.contains('collapsed') ? 'rotate(-90deg)' : 'rotate(0deg)';
     });
     return el;
   }
@@ -182,8 +212,11 @@
     let total = 0, accepted = 0;
     allRows.forEach(it => { total += it.total_leads; accepted += it.accepted_leads; });
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'padding:16px; border-top:2px solid #eee; margin-top:10px; font-size:15px';
-    wrap.innerHTML = `<b>Totaal Selectie:</b> ${fmt(total)} leads • ${fmt(accepted)} accepted • <b>${pct(accepted,total).toFixed(1)}%</b>`;
+    wrap.className = 'total-summary';
+    wrap.innerHTML = `
+      <span>TOTAAL SELECTIE</span>
+      <span>Leads: ${fmt(total)} • Accepted: ${fmt(accepted)} • ${pct(accepted,total).toFixed(1)}%</span>
+    `;
     return wrap;
   }
 
