@@ -1,116 +1,133 @@
 // pages/api/rules/index.js
-import { applyCors } from './_cors.js';
 
-const DIRECTUS_URL   = process.env.DIRECTUS_URL;
+const DIRECTUS_URL = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
-const COLLECTION     = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
-// ---- Directus fetch ----
-function dFetch(path, init = {}) {
-  if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
-    const miss = [];
-    if (!DIRECTUS_URL)  miss.push('DIRECTUS_URL');
-    if (!DIRECTUS_TOKEN) miss.push('DIRECTUS_TOKEN');
-    throw new Error('Missing env: ' + miss.join(', '));
+// --- 1. CORS LOGICA (Gelijk aan Counters API) ---
+function parseAllowed() {
+  return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function applyCors(req, res) {
+  const allowed = parseAllowed();
+  const origin = req.headers.origin;
+
+  if (origin && (allowed.includes('*') || allowed.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else if (allowed.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
+
+  // BELANGRIJK: Hier voegen we PATCH, POST en DELETE toe
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return true;
+  }
+  return false;
+}
+
+// Helper voor calls naar Directus
+function dFetch(path, options = {}) {
   const url = `${DIRECTUS_URL}${path}`;
   const headers = {
-    ...(init.headers || {}),
+    ...(options.headers || {}),
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
   };
-  return fetch(url, { ...init, headers });
+  return fetch(url, { ...options, headers });
 }
 
-// ---- description <-> Omschrijving mapping ----
-function mapOut(row) {
-  return {
-    id: row.id,
-    description: row.Omschrijving ?? row.description ?? null,
-    affiliate_id: row.affiliate_id ?? null,
-    offer_id: row.offer_id ?? null,
-    sub_id: row.sub_id ?? null,
-    percent_accept: row.percent_accept ?? 0,
-    priority: row.priority ?? 100,
-    active: !!row.active,
-    target_margin: row.target_margin ?? 15,
-    min_volume: row.min_volume ?? 20,
-    auto_pilot: !!row.auto_pilot,
-  };
-}
-function mapIn(p) {
-  const desc =
-    p?.description ??
-    p?.Omschrijving ??
-    p?.omschrijving ??
-    p?.Beschrijving ??
-    p?.beschrijving ??
-    null;
-
-  return {
-    Omschrijving: desc ?? null,
-    affiliate_id: p.affiliate_id === '' ? null : (p.affiliate_id ?? null),
-    offer_id:     p.offer_id     === '' ? null : (p.offer_id     ?? null),
-    sub_id:
-      String(p.sub_id).toLowerCase() === 'null' ? null :
-      (p.sub_id === '' ? null : (p.sub_id ?? null)),
-    percent_accept: Number(p.percent_accept ?? 0),
-    priority:       Number(p.priority ?? 100),
-    active: !!p.active,
-    target_margin: row.target_margin ?? 15,
-    min_volume: row.min_volume ?? 20,
-    auto_pilot: !!row.auto_pilot,
-  };
-}
-
-// ---- handler ----
 export default async function handler(req, res) {
+  // 1. CORS Check
   if (applyCors(req, res)) return;
 
-  // Admin auth
+  // 2. Auth Check
   const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
-    return res.status(403).json({ ok:false, error:'forbidden' });
+    return res.status(403).json({ ok: false, error: 'forbidden' });
   }
 
   try {
+    // --- GET: Regels ophalen ---
     if (req.method === 'GET') {
       const qs = new URLSearchParams({
-        fields: 'id,Omschrijving,affiliate_id,offer_id,sub_id,percent_accept,priority,active,target_margin,min_volume,auto_pilot',
+        // Hier zorgen we dat alle benodigde velden worden opgehaald
+        fields: 'id,Omschrijving,description,affiliate_id,offer_id,sub_id,percent_accept,priority,active,auto_pilot,target_margin,min_volume',
         sort: 'priority',
-        limit: '200',
+        limit: '500', // Ruime limiet
       });
-      const r = await dFetch(`/items/${encodeURIComponent(COLLECTION)}?${qs.toString()}`);
+      
+      const r = await dFetch(`/items/Optimization_rules?${qs.toString()}`);
       const j = await r.json();
-      if (!r.ok) return res.status(r.status).json(j);
-      const items = (j?.data || []).map(mapOut);
-      return res.status(200).json({ ok:true, items });
+      
+      if (!r.ok) throw new Error(JSON.stringify(j));
+      return res.status(200).json({ ok: true, items: j.data || [] });
     }
 
+    // --- PATCH: Regels updaten (Auto Pilot aan/uit, percentages etc) ---
+    if (req.method === 'PATCH') {
+      const { keys, data } = req.body; // Frontend stuurt { keys: [id], data: {...} }
+      
+      if (!keys || !Array.isArray(keys) || !data) {
+        return res.status(400).json({ ok: false, error: 'Invalid body' });
+      }
+
+      // Directus Bulk Update Endpoint
+      const r = await dFetch(`/items/Optimization_rules`, {
+        method: 'PATCH',
+        body: JSON.stringify({ keys, data })
+      });
+      const j = await r.json();
+
+      if (!r.ok) throw new Error(JSON.stringify(j));
+      return res.status(200).json({ ok: true, data: j.data });
+    }
+
+    // --- POST: Nieuwe regel aanmaken ---
     if (req.method === 'POST') {
-      const body = mapIn(req.body || {});
-      // mini-validaties
-      const errs = [];
-      if (!body.Omschrijving || !String(body.Omschrijving).trim()) errs.push('Omschrijving verplicht');
-      const pct = Number(body.percent_accept);
-      if (Number.isNaN(pct) || pct<0 || pct>100) errs.push('percent_accept 0–100');
-      const pri = Number(body.priority);
-      if (Number.isNaN(pri) || pri<0) errs.push('priority ≥ 0');
-      if (errs.length) return res.status(400).json({ ok:false, error: 'Validation: '+errs.join(', ') });
-
-      const r = await dFetch(`/items/${encodeURIComponent(COLLECTION)}`, {
+      const payload = req.body;
+      const r = await dFetch(`/items/Optimization_rules`, {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload)
       });
       const j = await r.json();
-      if (!r.ok) return res.status(r.status).json(j);
-      return res.status(201).json({ ok:true, item: mapOut(j.data) });
+      
+      if (!r.ok) throw new Error(JSON.stringify(j));
+      return res.status(200).json({ ok: true, data: j.data });
     }
 
-    return res.status(405).json({ ok:false, error:'Method not allowed' });
+    // --- DELETE: Regels verwijderen ---
+    if (req.method === 'DELETE') {
+      const ids = req.body; // Frontend stuurt array van ID's: [12, 15]
+      if (!Array.isArray(ids)) return res.status(400).json({ error: 'Body must be array of IDs' });
+
+      const r = await dFetch(`/items/Optimization_rules`, {
+        method: 'DELETE',
+        body: JSON.stringify(ids)
+      });
+      
+      if (!r.ok) {
+        // Directus delete geeft soms lege body bij succes, dus check status
+        if (r.status === 204) return res.status(200).json({ ok: true });
+        const j = await r.json();
+        throw new Error(JSON.stringify(j));
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    // Als methode niet herkend wordt
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+
   } catch (e) {
-    return res.status(500).json({ ok:false, error:String(e) });
+    console.error("Rules API Error:", e);
+    return res.status(500).json({ ok: false, error: String(e) });
   }
 }
