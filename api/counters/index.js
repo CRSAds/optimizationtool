@@ -1,13 +1,20 @@
+// /pages/api/counters/index.js
 import { createClient } from '@supabase/supabase-js';
-
-// Initialiseer Supabase
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const DIRECTUS_URL = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 
-// === EXACTE WERKENDE CORS LOGICA ===
+// Initialiseer Supabase pas binnen de handler of met een check om crashes te voorkomen
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabase;
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+}
+
+// === CORS LOGICA ===
 function parseAllowed() {
   return (process.env.ADMIN_ALLOWED_ORIGINS || '*')
     .split(',')
@@ -18,20 +25,15 @@ function parseAllowed() {
 function applyCors(req, res) {
   const allowed = parseAllowed();
   const origin = req.headers.origin;
-  // Als de origin in de lijst staat of als we alles toestaan (*)
   if (origin && (allowed.includes('*') || allowed.includes(origin))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-  } else if (!origin && allowed.includes('*')) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
   }
-
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token');
-  
-  if (req.method === 'OPTIONS') { 
-    res.status(204).end(); 
-    return true; 
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return true;
   }
   return false;
 }
@@ -47,10 +49,16 @@ function dFetch(path, init = {}) {
 }
 
 export default async function handler(req, res) {
-  // Voer CORS check uit voor de browser
+  // 1. Altijd eerst CORS toepassen
   if (applyCors(req, res)) return;
 
-  // Admin check
+  // 2. Veiligheidscheck: crashte de initialisatie?
+  if (!supabase) {
+    console.error("Supabase configuratie ontbreekt (URL of Key)");
+    return res.status(500).json({ ok: false, error: 'Internal Server Error: Database config missing' });
+  }
+
+  // 3. Admin auth check
   const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
     return res.status(403).json({ ok: false, error: 'forbidden' });
@@ -63,7 +71,7 @@ export default async function handler(req, res) {
   try {
     const { date_from, date_to, affiliate_id, offer_id, sub_id, limit = '500' } = req.query;
 
-    // Filters voor Directus
+    // Directus Filters
     const AND = [];
     if (date_from || date_to) {
       const range = {};
@@ -73,8 +81,6 @@ export default async function handler(req, res) {
     }
     if (affiliate_id) AND.push({ affiliate_id: { _eq: String(affiliate_id) } });
     if (offer_id) AND.push({ offer_id: { _eq: String(offer_id) } });
-    if (sub_id === 'null') AND.push({ sub_id: { _null: true } });
-    else if (sub_id) AND.push({ sub_id: { _eq: String(sub_id) } });
 
     const filter = AND.length ? { _and: AND } : {};
     const qs = new URLSearchParams({
@@ -84,19 +90,21 @@ export default async function handler(req, res) {
       filter: JSON.stringify(filter),
     });
 
-    // 1. Haal Directus counters
+    // Haal data uit Directus
     const r = await dFetch(`/items/Optimization_counters?${qs.toString()}`);
     const j = await r.json();
     if (!r.ok) return res.status(r.status).json(j);
     const counters = j.data || [];
 
-    // 2. Haal Supabase marges (View)
-    const { data: marginData } = await supabase
+    // Haal marge data uit Supabase
+    const { data: marginData, error: sbError } = await supabase
       .from('offer_performance_v2')
       .select('offer_id, sub_id, margin_pct, day')
       .gte('day', date_from || new Date().toISOString().split('T')[0]);
 
-    // 3. Verrijk data
+    if (sbError) console.error("Supabase Error:", sbError);
+
+    // Merge data
     const enrichedItems = counters.map(c => {
       const match = marginData?.find(m => 
         String(m.offer_id) === String(c.offer_id) && 
@@ -110,7 +118,9 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({ ok: true, items: enrichedItems });
+
   } catch (e) {
+    console.error("Handler Error:", e);
     return res.status(500).json({ ok: false, error: String(e) });
   }
 }
