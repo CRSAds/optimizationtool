@@ -22,7 +22,6 @@ body{
   color: var(--text);
   font-size: 13px;
   margin: 0;
-  /* We forceren hier geen hoogte meer, zodat Swipepages de pagina-indeling beheert */
 }
 
 /* --- MAIN LAYOUT WRAPPER --- */
@@ -30,18 +29,14 @@ body{
   width: 100%;
   max-width: 1800px; 
   margin: 0 auto; 
-  padding: 0 20px 20px 20px; /* Minder padding bovenin voor aansluiting op titel */
-  
-  /* DE HOOGTE FIX: */
-  /* 80vh zorgt ervoor dat hij niet van het scherm valt als er een titel boven staat */
+  padding: 0 20px 20px 20px; 
   height: 80vh; 
-  min-height: 500px; /* Voorkomt dat hij te klein wordt op mini schermpjes */
-  
+  min-height: 500px; 
   display: flex;
   flex-direction: column;
 }
 
-/* --- DE CARD (Het witte vlak) --- */
+/* --- DE CARD --- */
 .rules-card{ 
   background: var(--panel); 
   border: 1px solid var(--border); 
@@ -50,11 +45,10 @@ body{
   display: flex; 
   flex-direction: column; 
   overflow: hidden; 
-  /* Card vult alle ruimte binnen de rules-wrap */
   flex: 1; 
 }
 
-/* --- TOOLBAR (Bovenkant) --- */
+/* --- TOOLBAR --- */
 .rules-toolbar{
   flex-shrink: 0;
   display: flex; 
@@ -64,7 +58,7 @@ body{
   padding: 10px 16px;
   border-bottom: 1px solid var(--border); 
   background: #fff;
-  overflow-x: auto; /* Horizontaal scrollen op mobiel */
+  overflow-x: auto;
 }
 
 .rules-label{ font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
@@ -87,9 +81,8 @@ body{
 .rules-btn.ok{ background: var(--ok); }
 .rules-btn.danger{ background: var(--danger); }
 
-/* --- SCROLL AREA (De tabel zelf) --- */
+/* --- SCROLL AREA --- */
 .table-wrap{ 
-  /* Dit zorgt dat ALLEEN de tabel scrollt, en headers/footers blijven staan */
   flex: 1; 
   overflow-y: auto; 
   background: #fff; 
@@ -103,30 +96,44 @@ table.rules{
   table-layout: fixed; 
 }
 
-/* Sticky Headers */
+/* STICKY HEADERS (Aangepast: padding naar 12px) */
 table.rules thead th{
   position: sticky; top: 0; z-index: 10; 
   background: var(--thead); color: var(--muted);
-  text-align: left; padding: 10px 8px; 
+  text-align: left; 
+  padding: 10px 12px; /* MEER RUIMTE LINKS */
   border-bottom: 1px solid var(--border);
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* --- GROUPS & ROWS (Styling) --- */
+/* ALGEMENE CELLEN (Dit fixt de Results pagina) */
+table.rules td {
+  padding: 6px 12px; /* MEER RUIMTE LINKS */
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  color: var(--text);
+}
+
+/* --- RULES EDITOR ROWS --- */
 /* Groep Headers (Offer ID) */
 tr.group-row { background: #f8fafc; cursor: pointer; font-weight: 600; }
 tr.group-row:hover { background: #f1f5f9; }
-tr.group-row td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+tr.group-row td { 
+  padding: 8px 12px; /* Consistent met headers */
+  border-bottom: 1px solid var(--border); 
+}
 
-/* Pijltje animatie */
 .group-expander { display: inline-block; width: 20px; transition: transform 0.2s; color: var(--muted); }
 tr.group-row.open .group-expander { transform: rotate(90deg); color: var(--brand); }
 
 /* De regels zelf */
 tr.rule-row { display: none; }
 tr.rule-row.visible { display: table-row; }
-tr.rule-row td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; height: 40px; vertical-align: middle; }
+tr.rule-row td { 
+  padding: 4px 12px; /* Consistent met headers */
+  border-bottom: 1px solid #f1f5f9; height: 40px; 
+}
 tr.rule-row:hover td { background: #f8fafc; }
 
 /* Inputs in tabel */
@@ -137,7 +144,7 @@ table.rules input:focus { border-color: var(--brand); }
 .row-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; }
 .row-actions .rules-btn { height: 28px; padding: 0 10px; font-size: 11px; }
 
-/* --- FOOTER (Vaste positie onderaan) --- */
+/* --- FOOTER --- */
 .newbar{
   flex-shrink: 0; background: #fff; padding: 10px 16px; border-top: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; z-index: 20;
