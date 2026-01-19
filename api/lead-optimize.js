@@ -19,7 +19,9 @@ function dfetch(path, init = {}) {
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  return fetch(url, { ...init, headers });
+  
+  // AANGEPAST: cache: 'no-store' zorgt dat we altijd verse regels krijgen
+  return fetch(url, { ...init, headers, cache: 'no-store' });
 }
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -37,12 +39,13 @@ async function hashToPercent(input){
    ========================= */
 
 // Kandidaten: regels die niet in tegenspraak zijn (eq of null/wildcard)
-// We vragen ook `date_created` op voor een nette tie-break (nieuwste wint).
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
-  p.append('limit', '300');
-  p.append('sort[]', 'id'); // stabiel maar ondergeschikt, echte keuze gebeurt client-side
+  
+  // AANGEPAST: Limiet verhoogd van 300 naar 5000 zodat nieuwe regels niet wegvallen
+  p.append('limit', '5000'); 
+  p.append('sort[]', '-id'); // AANGEPAST: Nieuwste eerst (optioneel, maar veiliger)
   p.append('filter[_and][0][active][_eq]', 'true');
 
   // affiliate: (eq) OR (_null)
@@ -207,6 +210,9 @@ export default async function handler(req, res) {
 
     // 1) Beste regel op basis van "meeste overeenkomsten"
     const { rule, level } = await findRule(lead);
+    
+    // Als er GEEN regel gevonden wordt, slaan we ook niets op in de counters.
+    // Dit was waarschijnlijk het probleem met de nieuwe offers.
     if (!rule) return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
 
     // 2) (optioneel) cap per dag
