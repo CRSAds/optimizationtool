@@ -1,6 +1,6 @@
 (function() {
   const API_URL = 'https://optimizationtool.vercel.app/api/rules';
-  const HARDCODED_TOKEN = "ditiseenlanggeheimtoken";
+  const DEFAULT_TOKEN = "ditiseenlanggeheimtoken";
 
   function startApp() {
     const mount = document.getElementById('rules-ui');
@@ -32,7 +32,18 @@
           <div class="table-wrap">
             <table class="rules">
               <colgroup>
-                 <col style="width:40px">  <col style="width:80px">  <col style="width:auto">  <col style="width:90px">  <col style="width:90px">  <col style="width:80px">  <col style="width:90px">  <col style="width:80px">  <col style="width:70px">  <col style="width:50px">  <col style="width:130px"> </colgroup>
+                 <col style="width:40px">
+                 <col style="width:80px">
+                 <col style="width:auto">
+                 <col style="width:90px">
+                 <col style="width:90px">
+                 <col style="width:80px">
+                 <col style="width:90px">
+                 <col style="width:80px">
+                 <col style="width:70px">
+                 <col style="width:50px">
+                 <col style="width:130px">
+              </colgroup>
               <thead>
                 <tr>
                   <th></th>
@@ -72,9 +83,18 @@
     let CACHE = [];
     let OPEN_GROUPS = new Set(); 
 
+    // --- TOKEN LOGICA (FIX) ---
     const tInput = $('#rui_token');
-    tInput.value = localStorage.getItem('rui_token') || HARDCODED_TOKEN;
-    localStorage.setItem('rui_token', tInput.value.trim());
+    // Haal op uit storage
+    let currentToken = localStorage.getItem('rui_token');
+    
+    // Als er geen token is, of hij is leeg, gebruik de default
+    if (!currentToken || currentToken.trim() === '') {
+       currentToken = DEFAULT_TOKEN;
+       localStorage.setItem('rui_token', currentToken);
+    }
+    
+    tInput.value = currentToken;
     tInput.addEventListener('change', () => localStorage.setItem('rui_token', tInput.value.trim()));
 
     function headers() { return { 'Content-Type': 'application/json', 'X-Admin-Token': tInput.value.trim() }; }
@@ -99,7 +119,7 @@
       });
 
       if (!filtered.length) {
-        msgEl.textContent = 'Geen regels gevonden.';
+        msgEl.innerHTML = 'Geen regels gevonden.<br><small style="color:#94a3b8">Check of je token klopt.</small>';
         msgEl.style.display = 'block';
         return;
       }
@@ -186,6 +206,7 @@
 
         const newState = !item.auto_pilot;
         item.auto_pilot = newState;
+        // Direct UI update
         autoCol.innerHTML = newState ? `<span class="badge badge-auto">AAN</span>` : `<span class="badge badge-off">UIT</span>`;
 
         try {
@@ -275,16 +296,26 @@
       try {
         const res = await fetch(API_URL, { headers: headers() });
         const data = await res.json();
+        
+        // Safety check voor als API error geeft (bv verkeerd token)
+        if (!data.items) {
+             throw new Error(data.error || 'Geen data');
+        }
+        
         CACHE = data.items || [];
         render();
       } catch (e) {
-        msgEl.textContent = 'Error: ' + e.message;
+        msgEl.innerHTML = `Fout bij laden: ${e.message}.<br>Check je token.`;
         msgEl.style.display = 'block';
       }
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp);
-    else startApp();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startApp);
+    } else {
+        startApp();
+    }
   }
+
   startApp();
 })();
