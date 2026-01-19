@@ -150,3 +150,150 @@ table.rules input:focus { border-color: var(--brand); }
 .badge-danger { background: #fee2e2; color: #991b1b; }
 
 .chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg: #f1f5f9;
+  --panel: #ffffff;
+  --input-bg: #f8fafc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --brand: #2563eb;
+  --ok: #16a34a;
+  --danger: #dc2626;
+  --border: #e2e8f0;
+  --thead: #f8fafc;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+*{ box-sizing:border-box; }
+
+body{
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+  /* Cruciaal: dit voorkomt dat de hele browser scrollt */
+  height: 100vh; 
+  overflow: hidden; 
+}
+
+/* --- LAYOUT WRAPPER --- */
+.rules-wrap{ 
+  width: 100%;
+  max-width: 1800px; 
+  margin: 0 auto; 
+  padding: 20px; 
+  /* Zorgt dat de wrapper precies de hoogte van het scherm is */
+  height: 100vh; 
+  display: flex;
+  flex-direction: column;
+}
+
+.rules-card{ 
+  background: var(--panel); 
+  border: 1px solid var(--border); 
+  border-radius: 8px; 
+  box-shadow: var(--shadow); 
+  display: flex; 
+  flex-direction: column; 
+  overflow: hidden; 
+  /* Card neemt alle beschikbare ruimte in de wrapper */
+  flex: 1; 
+}
+
+/* --- TOOLBAR (Vaste hoogte) --- */
+.rules-toolbar{
+  flex-shrink: 0;
+  display: flex; 
+  flex-wrap: nowrap; 
+  align-items: center; 
+  gap: 10px; 
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border); 
+  background: #fff;
+  overflow-x: auto;
+}
+
+.rules-label{ font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+
+.rules-input{
+  background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 4px; height: 32px; padding: 0 8px; outline: none; font-size: 13px;
+}
+.rules-input:focus{ border-color: var(--brand); background: #fff; }
+
+/* --- BUTTONS --- */
+.rules-btn{
+  height: 32px; padding: 0 12px; border-radius: 4px; border: none;
+  background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; transition: filter 0.1s;
+}
+.rules-btn:hover{ filter: brightness(1.1); }
+.rules-btn.ghost{ background: transparent; color: var(--text); border: 1px solid var(--border); }
+.rules-btn.ok{ background: var(--ok); }
+.rules-btn.danger{ background: var(--danger); }
+
+/* --- TABLE SCROLL AREA --- */
+.table-wrap{ 
+  /* Dit gedeelte pakt de overgebleven ruimte en wordt scrollbaar */
+  flex: 1; 
+  overflow-y: auto; 
+  background: #fff; 
+  position: relative;
+}
+
+table.rules{ 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: 13px; 
+  table-layout: fixed; 
+}
+
+/* Sticky Headers: Blijven staan tijdens scrollen */
+table.rules thead th{
+  position: sticky; top: 0; z-index: 10; 
+  background: var(--thead); color: var(--muted);
+  text-align: left; padding: 10px 8px; 
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* --- ROWS & STYLING --- */
+tr.group-row { background: #f8fafc; cursor: pointer; font-weight: 600; }
+tr.group-row:hover { background: #f1f5f9; }
+tr.group-row td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+
+.group-expander { display: inline-block; width: 20px; transition: transform 0.2s; color: var(--muted); }
+tr.group-row.open .group-expander { transform: rotate(90deg); color: var(--brand); }
+
+tr.rule-row { display: none; }
+tr.rule-row.visible { display: table-row; }
+tr.rule-row td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; height: 40px; vertical-align: middle; }
+tr.rule-row:hover td { background: #f8fafc; }
+
+table.rules input { width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-size: 12px; }
+table.rules input:focus { border-color: var(--brand); }
+
+/* Knoppen altijd naast elkaar */
+.row-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; }
+.row-actions .rules-btn { height: 28px; padding: 0 10px; font-size: 11px; }
+
+/* --- FOOTER (Vaste hoogte) --- */
+.newbar{
+  flex-shrink: 0; background: #fff; padding: 10px 16px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: center; z-index: 20;
+}
+
+.rules-empty{ padding: 40px; color: var(--muted); text-align: center; }
+
+/* Badges */
+.badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; border: 1px solid transparent; }
+.badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+.badge-off { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+
+.chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
