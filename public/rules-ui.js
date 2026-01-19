@@ -6,6 +6,10 @@
     const mount = document.getElementById('rules-ui');
     if (!mount) return;
 
+    // Voorkom dubbele rendering als hij per ongeluk 2x wordt aangeroepen
+    if (mount.getAttribute('data-loaded') === 'true') return;
+    mount.setAttribute('data-loaded', 'true');
+
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -83,17 +87,15 @@
     let CACHE = [];
     let OPEN_GROUPS = new Set(); 
 
-    // --- TOKEN LOGICA (FIX) ---
+    // --- TOKEN LOGICA ---
     const tInput = $('#rui_token');
-    // Haal op uit storage
     let currentToken = localStorage.getItem('rui_token');
     
-    // Als er geen token is, of hij is leeg, gebruik de default
+    // Als token leeg is of 'null', gebruik default
     if (!currentToken || currentToken.trim() === '') {
        currentToken = DEFAULT_TOKEN;
        localStorage.setItem('rui_token', currentToken);
     }
-    
     tInput.value = currentToken;
     tInput.addEventListener('change', () => localStorage.setItem('rui_token', tInput.value.trim()));
 
@@ -206,7 +208,6 @@
 
         const newState = !item.auto_pilot;
         item.auto_pilot = newState;
-        // Direct UI update
         autoCol.innerHTML = newState ? `<span class="badge badge-auto">AAN</span>` : `<span class="badge badge-off">UIT</span>`;
 
         try {
@@ -297,7 +298,6 @@
         const res = await fetch(API_URL, { headers: headers() });
         const data = await res.json();
         
-        // Safety check voor als API error geeft (bv verkeerd token)
         if (!data.items) {
              throw new Error(data.error || 'Geen data');
         }
@@ -310,12 +310,16 @@
       }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startApp);
-    } else {
-        startApp();
-    }
+    // Initial Load
+    loadRules();
   }
 
-  startApp();
+  // --- VEILIGE START LOGICA ---
+  // Hier zat de fout: de aanroep van startApp zat IN de functie zelf.
+  // Nu staat hij er netjes buiten.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startApp);
+  } else {
+    startApp();
+  }
 })();
