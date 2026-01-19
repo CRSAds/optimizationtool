@@ -7,29 +7,24 @@
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
+    // DE RESULTATEN LAYOUT
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
           <div class="rules-toolbar" style="flex-wrap:nowrap; overflow-x:auto;">
             <input id="c_token" class="rules-input" type="password" style="width:120px" placeholder="Token">
-
             <select id="c_groupmode" class="rules-input" style="width:140px">
               <option value="date">Groep: Datum</option>
               <option value="offer">Groep: Offer</option>
               <option value="affiliate">Groep: Affiliate</option>
             </select>
-
             <div style="width:1px;height:24px;background:#e2e8f0;margin:0 4px"></div>
-
             <input id="c_from" class="rules-input" type="date" style="width:130px">
             <input id="c_to"   class="rules-input" type="date" style="width:130px">
-            
             <div style="width:1px;height:24px;background:#e2e8f0;margin:0 4px"></div>
-
             <input id="c_aff"  class="rules-input" type="text" placeholder="Aff ID" style="width:80px">
             <input id="c_off"  class="rules-input" type="text" placeholder="Off ID" style="width:80px">
             <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:80px">
-            
             <button id="c_run" class="rules-btn" type="button" style="margin-left:auto">Toon</button>
           </div>
           
@@ -47,7 +42,8 @@
       </div>
     `;
 
-    const $ = (s) => mount.querySelector(s);
+    const $ = (s) => document.querySelector(s); // Let op: document selector zodat we ook buiten de mount kunnen zoeken
+    const mount$ = (s) => mount.querySelector(s);
     
     // Formatters
     const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
@@ -55,16 +51,20 @@
     const pct = (a,t)=> t>0 ? (100*a/t) : 0;
     const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     
-    $('#c_token').value = localStorage.getItem('rui_token') || 'ditiseenlanggeheimtoken';
-    $('#c_token').addEventListener('change', e=> localStorage.setItem('rui_token', e.target.value.trim()));
+    // Token Logic
+    const tokenInput = mount$('#c_token');
+    tokenInput.value = localStorage.getItem('rui_token') || 'ditiseenlanggeheimtoken';
+    tokenInput.addEventListener('change', e=> localStorage.setItem('rui_token', e.target.value.trim()));
 
-    const selMode = $('#c_groupmode');
+    // Mode Selector
+    const selMode = mount$('#c_groupmode');
     selMode.value = localStorage.getItem('c_groupmode') || 'date';
     selMode.addEventListener('change', ()=> {
       localStorage.setItem('c_groupmode', selMode.value);
       runCounters();
     });
 
+    // Date Presets
     function setPreset(which){
       const d = new Date(); const pad = n=> String(n).padStart(2,'0');
       const toIso = (dt)=> `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
@@ -72,44 +72,75 @@
       if(which==='yesterday'){ from.setDate(d.getDate()-1); to.setDate(d.getDate()-1); }
       if(which==='last7'){ from.setDate(d.getDate()-6); }
       if(which==='month'){ from = new Date(d.getFullYear(), d.getMonth(), 1); }
-      $('#c_from').value = toIso(from);
-      $('#c_to').value   = toIso(to);
+      mount$('#c_from').value = toIso(from);
+      mount$('#c_to').value   = toIso(to);
     }
 
     let RULES_MAP = null;
-    async function ensureRules(){
-      if(RULES_MAP) return RULES_MAP;
+
+    // Functie: Haal regels op en vul de Widget (als die bestaat)
+    async function ensureRulesAndLogs(){
       try {
-        const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': $('#c_token').value.trim() } });
+        const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         RULES_MAP = {};
+        const logs = [];
+
         (j.items || []).forEach(it => {
           RULES_MAP[it.id] = { auto_pilot: !!it.auto_pilot, target_margin: Number(it.target_margin || 15), percent_accept: it.percent_accept };
+          // Verzamel logs
+          if(it.pilot_log) {
+             logs.push({ 
+               id: it.id, 
+               offer: it.offer_id, 
+               sub: it.sub_id,
+               msg: it.pilot_log 
+             });
+          }
         });
-      } catch { RULES_MAP = {}; }
+
+        // Zoek naar de Widget in de HTML (buiten de mount)
+        const widget = document.getElementById('autopilot-logs-widget');
+        const list = document.getElementById('autopilot-logs-list');
+        
+        if (widget && list) {
+          if (logs.length > 0) {
+            widget.style.display = 'block';
+            list.innerHTML = logs.map(l => `
+              <div style="padding:4px 0; border-bottom:1px solid #fee2e2">
+                <b>Offer ${l.offer}</b> ${l.sub ? `(Sub ${l.sub})` : ''}: ${l.msg}
+              </div>
+            `).join('');
+          } else {
+            widget.style.display = 'none';
+          }
+        }
+
+      } catch (e) { console.error("Rules/Logs fetch error", e); RULES_MAP = {}; }
       return RULES_MAP;
     }
 
     async function runCounters(){
-      const host = $('#c_groups');
+      const host = mount$('#c_groups');
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
       try {
-        await ensureRules();
+        await ensureRulesAndLogs(); // Haalt regels + vult widget
+        
         const q = new URLSearchParams({ 
-          date_from: $('#c_from').value, 
-          date_to: $('#c_to').value,
-          affiliate_id: $('#c_aff').value,
-          offer_id: $('#c_off').value,
-          sub_id: $('#c_sub').value
+          date_from: mount$('#c_from').value, 
+          date_to: mount$('#c_to').value,
+          affiliate_id: mount$('#c_aff').value,
+          offer_id: mount$('#c_off').value,
+          sub_id: mount$('#c_sub').value
         });
 
-        const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': $('#c_token').value.trim() } });
+        const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         const rows = j.items || [];
 
         if(!rows.length){ host.innerHTML = `<div style="padding:20px;text-align:center">Geen resultaten</div>`; return; }
 
-        const mode = $('#c_groupmode').value;
+        const mode = mount$('#c_groupmode').value;
         const grouped = {};
         rows.forEach(it => {
           const key = mode === 'date' ? it.date : (it[mode + '_id'] || '—');
@@ -137,11 +168,9 @@
         };
         acc.total += Number(it.total_leads || 0);
         acc.accepted += Number(it.accepted_leads || 0);
-        // Euro's optellen
         acc.revenue += Number(it.revenue || 0);
         acc.cost    += Number(it.cost || 0);
         acc.profit  += Number(it.profit || 0);
-
         map.set(key, acc);
       }
       return [...map.values()];
@@ -172,7 +201,11 @@
         <div class="group-body">
           <table class="rules">
              <colgroup>
-               <col style="width:70px"><col style="width:70px"><col style="width:70px"> <col style="width:60px"> <col style="width:60px"> <col style="width:80px"> <col style="width:80px"> <col style="width:80px"> <col style="width:80px"> <col style="width:60px"><col style="width:60px"><col style="width:60px"> </colgroup>
+               <col style="width:70px"><col style="width:70px"><col style="width:70px">
+               <col style="width:60px"><col style="width:60px"><col style="width:80px">
+               <col style="width:80px"><col style="width:80px"><col style="width:80px">
+               <col style="width:60px"><col style="width:60px"><col style="width:60px">
+             </colgroup>
             <thead>
               <tr>
                 <th>Aff</th><th>Off</th><th>Sub</th>
@@ -202,11 +235,9 @@
                     <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
                     <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
                     <td>${marginBadge}</td>
-                    
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
                     <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-
                     <td>${fmt(r.total)}</td>
                     <td>${fmt(r.accepted)}</td>
                     <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
@@ -253,7 +284,7 @@
     });
 
     setPreset('last7');
-    $('#c_run').addEventListener('click', runCounters);
+    mount$('#c_run').addEventListener('click', runCounters);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp);
