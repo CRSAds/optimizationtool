@@ -7,7 +7,6 @@
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // Nieuwe layout structuur (Wrap -> Card -> Toolbar / Table / Footer)
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -49,7 +48,10 @@
     `;
 
     const $ = (s) => mount.querySelector(s);
+    
+    // Formatters
     const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
+    const money = (n)=> new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n);
     const pct = (a,t)=> t>0 ? (100*a/t) : 0;
     const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     
@@ -119,7 +121,6 @@
           host.appendChild(renderGroup(mode, k, grouped[k]));
         });
         
-        // Plak totaal onderaan de lijst in de scroll area
         host.appendChild(renderGrandTotal(rows));
         
       } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
@@ -131,10 +132,16 @@
         const key = `${it.affiliate_id}|${it.offer_id}|${it.sub_id}|${it.rule_id}`;
         const acc = map.get(key) || { 
           affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, rule_id: it.rule_id,
-          total: 0, accepted: 0, actual_margin: it.actual_margin 
+          total: 0, accepted: 0, actual_margin: it.actual_margin,
+          revenue: 0, cost: 0, profit: 0
         };
         acc.total += Number(it.total_leads || 0);
         acc.accepted += Number(it.accepted_leads || 0);
+        // Euro's optellen
+        acc.revenue += Number(it.revenue || 0);
+        acc.cost    += Number(it.cost || 0);
+        acc.profit  += Number(it.profit || 0);
+
         map.set(key, acc);
       }
       return [...map.values()];
@@ -142,31 +149,36 @@
 
     function renderGroup(mode, key, items){
       const rows = aggregateRows(items);
-      let t_tot=0, t_acc=0;
-      rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; });
+      let t_tot=0, t_acc=0, t_rev=0, t_prof=0;
+      rows.forEach(r => { 
+          t_tot += r.total; 
+          t_acc += r.accepted; 
+          t_rev += r.revenue;
+          t_prof += r.profit;
+      });
 
       const el = document.createElement('div');
-      // HIER ZIT DE FIX VOOR DEFAULT INGEKLAPT: class="group collapsed"
       el.className = 'group collapsed'; 
       el.innerHTML = `
         <div class="group-header" data-role="toggle">
           <span class="chev">▶</span>
           <span><b>${key}</b></span>
-          <span style="margin-left:auto; font-size:12px; font-weight:400; color:#64748b">
-            Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)
-          </span>
+          <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
+             <span>Rev: <b>${money(t_rev)}</b></span>
+             <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
+             <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
+          </div>
         </div>
         <div class="group-body">
           <table class="rules">
              <colgroup>
-               <col style="width:80px"><col style="width:80px"><col style="width:80px">
-               <col style="width:60px"><col style="width:70px"><col style="width:90px">
-               <col style="width:60px"><col style="width:70px"><col style="width:60px">
-             </colgroup>
+               <col style="width:70px"><col style="width:70px"><col style="width:70px"> <col style="width:60px"> <col style="width:60px"> <col style="width:80px"> <col style="width:80px"> <col style="width:80px"> <col style="width:80px"> <col style="width:60px"><col style="width:60px"><col style="width:60px"> </colgroup>
             <thead>
               <tr>
-                <th>Affiliate</th><th>Offer</th><th>Sub</th><th>Rule %</th>
-                <th>Target</th><th>Marge</th><th>Total</th><th>Acc</th><th>Acc %</th>
+                <th>Aff</th><th>Off</th><th>Sub</th>
+                <th>Rule</th><th>Target</th><th>Marge %</th>
+                <th>Omzet</th><th>Kosten</th><th>Winst</th>
+                <th>Total</th><th>Acc</th><th>Acc %</th>
               </tr>
             </thead>
             <tbody>
@@ -190,6 +202,11 @@
                     <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
                     <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
                     <td>${marginBadge}</td>
+                    
+                    <td>${money(r.revenue)}</td>
+                    <td style="color:#64748b">${money(r.cost)}</td>
+                    <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
+
                     <td>${fmt(r.total)}</td>
                     <td>${fmt(r.accepted)}</td>
                     <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
@@ -209,13 +226,23 @@
     }
 
     function renderGrandTotal(allRows){
-      let total = 0, accepted = 0;
-      allRows.forEach(it => { total += it.total_leads; accepted += it.accepted_leads; });
+      let total = 0, accepted = 0, rev = 0, prof = 0;
+      allRows.forEach(it => { 
+          total += it.total_leads; 
+          accepted += it.accepted_leads;
+          rev += (it.revenue || 0);
+          prof += (it.profit || 0);
+      });
+      
       const wrap = document.createElement('div');
       wrap.className = 'total-summary';
       wrap.innerHTML = `
         <span>TOTAAL SELECTIE</span>
-        <span>Leads: ${fmt(total)} • Acc: ${fmt(accepted)} • ${pct(accepted,total).toFixed(1)}%</span>
+        <div style="display:flex; gap:20px">
+           <span>Omzet: ${money(rev)}</span>
+           <span>Winst: ${money(prof)}</span>
+           <span>Leads: ${fmt(total)} • Acc: ${fmt(accepted)} (${pct(accepted,total).toFixed(1)}%)</span>
+        </div>
       `;
       return wrap;
     }
