@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Helper: Maakt vergelijken van ID's veilig (zodat null, undefined en "" matchen)
+// Helper: Maakt vergelijken van ID's veilig
 function norm(val) {
   if (val === null || val === undefined) return '';
   return String(val).trim();
@@ -43,12 +43,19 @@ export default async function handler(req, res) {
     const AND = [];
     if (date_from) AND.push({ date: { _gte: date_from } });
     if (date_to)   AND.push({ date: { _lte: date_to } });
+    
+    // Alleen filteren als er daadwerkelijk iets is ingevuld (niet leeg)
     if (affiliate_id) AND.push({ affiliate_id: { _eq: affiliate_id } });
     if (offer_id) AND.push({ offer_id: { _eq: offer_id } });
     
-    // Robuuste check voor sub_id (zowel expliciet null als specifieke waarde)
-    if (sub_id === 'null' || sub_id === '') AND.push({ sub_id: { _null: true } });
-    else if (sub_id) AND.push({ sub_id: { _eq: sub_id } });
+    // FIX: Als sub_id leeg is (""), filteren we NIET (toon alles).
+    // Alleen als er expliciet gezocht wordt, passen we het filter toe.
+    if (sub_id && sub_id !== 'null') {
+       AND.push({ sub_id: { _eq: sub_id } });
+    } else if (sub_id === 'null') {
+       // Specifieke check voor 'geen sub id' (als je dat ooit zou willen sturen)
+       AND.push({ sub_id: { _null: true } });
+    }
 
     const qs = new URLSearchParams({
       fields: 'id,date,rule_id,affiliate_id,offer_id,sub_id,total_leads,accepted_leads',
@@ -69,7 +76,6 @@ export default async function handler(req, res) {
     const counters = dJson.data || [];
 
     // --- 4. SUPABASE DATA OPHALEN ---
-    // We halen hier jouw specifieke kolommen op: omzet_totaal, affise_cost, profit
     let query = supabase
       .from('offer_performance_v2')
       .select('offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, day');
