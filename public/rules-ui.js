@@ -1,65 +1,50 @@
 (function() {
   const API_URL = 'https://optimizationtool.vercel.app/api/rules';
-  const HARDCODED_TOKEN = "ditiseenlanggeheimtoken"; // Je token hier ingesteld
+  const HARDCODED_TOKEN = "ditiseenlanggeheimtoken";
 
-  // Dit is de hoofdfunctie die we pas starten als de HTML er is
   function startApp() {
     const mount = document.getElementById('rules-ui');
     if (!mount) return;
 
-    // --- HTML SKELETON ---
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
           <div class="rules-toolbar">
-            <span class="rules-label">Admin API</span>
-            <input id="rui_token" class="rules-input" type="password" style="width:180px" placeholder="Token">
+            <span class="rules-label">Rules API</span>
+            <input id="rui_token" class="rules-input" type="password" style="width:140px" placeholder="Token">
             
             <div style="width:1px;height:24px;background:#e2e8f0;margin:0 8px"></div>
 
             <span class="rules-label">Zoeken</span>
-            <input id="rui_search" class="rules-input" type="text" placeholder="Offer, Aff, Desc..." style="width:200px">
+            <input id="rui_search" class="rules-input" type="text" placeholder="Offer, Aff, Desc..." style="width:180px">
             
-            <div style="width:1px;height:24px;background:#e2e8f0;margin:0 8px"></div>
-
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none">
-               <input type="checkbox" id="rui_active_only" class="chk"> Alleen actieve
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-left:10px">
+               <input type="checkbox" id="rui_active_only" class="chk"> Actief
             </label>
 
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none;margin-left:12px">
-               <input type="checkbox" id="rui_autopilot_only" class="chk"> Alleen Auto Pilot
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-left:10px">
+               <input type="checkbox" id="rui_autopilot_only" class="chk"> Auto Pilot
             </label>
 
-            <button id="rui_refresh" class="rules-btn ghost" type="button" style="margin-left:auto">
-              ⟳ Reload
-            </button>
+            <button id="rui_refresh" class="rules-btn ghost" type="button" style="margin-left:auto">⟳</button>
           </div>
 
           <div class="table-wrap">
             <table class="rules">
               <colgroup>
-                 <col style="width:160px">
-                 <col style="width:auto">
-                 <col style="width:100px">
-                 <col style="width:100px">
-                 <col style="width:80px">
-                 <col style="width:100px">
-                 <col style="width:80px">
-                 <col style="width:70px">
-                 <col style="width:60px">
-                 <col style="width:100px">
-              </colgroup>
+                 <col style="width:40px">  <col style="width:80px">  <col style="width:auto">  <col style="width:90px">  <col style="width:90px">  <col style="width:80px">  <col style="width:90px">  <col style="width:80px">  <col style="width:70px">  <col style="width:50px">  <col style="width:130px"> </colgroup>
               <thead>
                 <tr>
-                  <th>Offer ID (Groep)</th>
+                  <th></th>
+                  <th>Offer</th>
                   <th>Omschrijving</th>
                   <th>Affiliate</th>
                   <th>Sub ID</th>
-                  <th>Accept %</th>
-                  <th style="text-align:center">Auto Pilot</th>
-                  <th>Target %</th>
-                  <th>Min Vol</th>
-                  <th style="text-align:center">Actief</th>
+                  <th>Acc %</th>
+                  <th style="text-align:center">Auto</th>
+                  <th>Target</th>
+                  <th>Vol</th>
+                  <th style="text-align:center">Aan</th>
                   <th>Actie</th>
                 </tr>
               </thead>
@@ -68,12 +53,12 @@
           </div>
           
           <div class="newbar">
-            <span style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;">Nieuw:</span>
-            <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID" style="width:120px;border-color:#93c5fd">
+            <span style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;">NIEUW:</span>
+            <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID" style="width:100px;border-color:#93c5fd">
             <input type="text" id="n_desc" class="rules-input" placeholder="Omschrijving" style="flex:1">
-            <input type="text" id="n_aff"  class="rules-input" placeholder="Affiliate" style="width:100px">
-            <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:100px">
-            <button id="rui_add" class="rules-btn ok" type="button">Toevoegen</button>
+            <input type="text" id="n_aff"  class="rules-input" placeholder="Aff ID" style="width:80px">
+            <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:80px">
+            <button id="rui_add" class="rules-btn ok" type="button">Add</button>
           </div>
           
           <div id="rui_msg" class="rules-empty" style="display:none"></div>
@@ -87,26 +72,15 @@
     let CACHE = [];
     let OPEN_GROUPS = new Set(); 
 
-    // --- TOKEN LOGICA (Prefilled) ---
     const tInput = $('#rui_token');
-    // Pak uit storage OF gebruik de hardcoded waarde
     tInput.value = localStorage.getItem('rui_token') || HARDCODED_TOKEN;
-    // Update direct storage voor het geval het de eerste keer is
     localStorage.setItem('rui_token', tInput.value.trim());
-    
     tInput.addEventListener('change', () => localStorage.setItem('rui_token', tInput.value.trim()));
 
-    function headers() {
-      return { 
-        'Content-Type': 'application/json', 
-        'X-Admin-Token': tInput.value.trim() 
-      };
-    }
-
+    function headers() { return { 'Content-Type': 'application/json', 'X-Admin-Token': tInput.value.trim() }; }
     function esc(s) { return (s ?? '').toString().replace(/"/g, '&quot;'); }
     function readDesc(it) { return it.description || it.Omschrijving || ''; }
 
-    // --- RENDER LOGICA ---
     function render() {
       if(!tbody) return;
       tbody.innerHTML = '';
@@ -116,11 +90,9 @@
       const activeOnly = $('#rui_active_only').checked;
       const autoPilotOnly = $('#rui_autopilot_only').checked;
 
-      // 1. Filteren
       let filtered = CACHE.filter(it => {
         if (activeOnly && !it.active) return false;
         if (autoPilotOnly && !it.auto_pilot) return false;
-        
         if (!term) return true;
         const txt = [it.offer_id, readDesc(it), it.affiliate_id, it.sub_id].join(' ').toLowerCase();
         return txt.includes(term);
@@ -132,7 +104,6 @@
         return;
       }
 
-      // 2. Groeperen
       const groups = {};
       filtered.forEach(it => {
         const oid = it.offer_id || 'Overig';
@@ -140,32 +111,24 @@
         groups[oid].push(it);
       });
 
-      // 3. Sorteren
-      const keys = Object.keys(groups).sort((a,b) => {
-        if(a === 'Overig') return 1;
-        if(b === 'Overig') return -1;
-        return Number(a) - Number(b);
-      });
+      const keys = Object.keys(groups).sort((a,b) => (a==='Overig'?1:b==='Overig'?-1:Number(a)-Number(b)));
 
-      // 4. Bouwen
       keys.forEach(key => {
         const items = groups[key];
-        const isOpen = OPEN_GROUPS.has(key) || term.length > 0; // Zoeken = openklappen
+        const isOpen = OPEN_GROUPS.has(key) || term.length > 0;
         
-        // Header
         const headerTr = document.createElement('tr');
         headerTr.className = `group-row ${isOpen ? 'open' : ''}`;
         headerTr.dataset.key = key;
         headerTr.innerHTML = `
+          <td style="text-align:center"><span class="group-expander">▶</span></td>
           <td colspan="10">
-            <span class="group-expander">▶</span>
-            <span style="display:inline-block;width:240px">Offer: ${key}</span>
-            <span style="font-weight:400;color:#64748b;font-size:12px">${items.length} regel(s)</span>
+            Offer: <span style="color:#2563eb">${key}</span> 
+            <span style="font-weight:400;color:#64748b;font-size:12px;margin-left:8px">(${items.length} regels)</span>
           </td>
         `;
         tbody.appendChild(headerTr);
 
-        // Rows
         items.forEach(it => {
           const tr = document.createElement('tr');
           tr.className = `rule-row ${isOpen ? 'visible' : ''}`;
@@ -177,14 +140,13 @@
 
           tr.innerHTML = `
             <td></td>
+            <td><span style="color:#94a3b8;font-size:11px">${esc(it.offer_id)}</span></td>
             <td><input type="text" value="${esc(readDesc(it))}" data-k="description"></td>
             <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
             <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
             <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
             
-            <td style="text-align:center;" class="col-autopilot">
-               ${autoBadge}
-            </td>
+            <td style="text-align:center;" class="col-autopilot">${autoBadge}</td>
 
             <td><input type="number" step="0.1" value="${it.target_margin ?? 15}" data-k="target_margin"></td>
             <td><input type="number" value="${it.min_volume ?? 20}" data-k="min_volume"></td>
@@ -193,8 +155,8 @@
               <input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active">
             </td>
             <td class="row-actions">
-              <button class="rules-btn ok" data-act="save" type="button" title="Opslaan">Save</button>
-              <button class="rules-btn danger" data-act="delete" type="button" title="Verwijderen">×</button>
+              <button class="rules-btn ok" data-act="save" type="button">Save</button>
+              <button class="rules-btn danger" data-act="delete" type="button">Del</button>
             </td>
           `;
           tbody.appendChild(tr);
@@ -202,9 +164,7 @@
       });
     }
 
-    // --- EVENTS ---
     tbody.addEventListener('click', (e) => {
-      // Toggle Groep
       const header = e.target.closest('tr.group-row');
       if(header){
         const key = header.dataset.key;
@@ -216,7 +176,6 @@
     });
 
     tbody.addEventListener('click', async (e) => {
-      // Auto Pilot Toggle
       const autoCol = e.target.closest('.col-autopilot');
       if (autoCol) {
         e.stopPropagation();
@@ -243,7 +202,6 @@
         return;
       }
 
-      // Knoppen
       const btn = e.target.closest('button');
       if (!btn) return;
       
@@ -275,8 +233,7 @@
         
         const item = CACHE.find(i => i.id == id);
         Object.assign(item, payload);
-        btn.textContent = 'OK';
-        setTimeout(() => btn.textContent = 'Save', 1000);
+        btn.textContent = 'Save';
       }
     });
 
@@ -305,7 +262,7 @@
         $('#n_desc').value = ''; $('#n_aff').value = ''; $('#n_sub').value = ''; $('#n_off').value = '';
         await loadRules();
       } catch(e) { alert('Error: ' + e); }
-      btn.textContent = 'Toevoegen';
+      btn.textContent = 'Add';
     });
 
     $('#rui_refresh').addEventListener('click', loadRules);
@@ -314,7 +271,7 @@
     $('#rui_autopilot_only').addEventListener('change', render);
 
     async function loadRules() {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#94a3b8">Laden...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#94a3b8">Laden...</td></tr>';
       try {
         const res = await fetch(API_URL, { headers: headers() });
         const data = await res.json();
@@ -326,13 +283,8 @@
       }
     }
 
-    loadRules();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp);
+    else startApp();
   }
-
-  // --- START LOGICA (Veilig) ---
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startApp);
-  } else {
-    startApp();
-  }
+  startApp();
 })();
