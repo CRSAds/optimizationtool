@@ -6,9 +6,8 @@ const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
-// --- 1. CORS LOGICA TOEVOEGEN ---
+// --- 1. CORS LOGICA ---
 function setCorsHeaders(req, res) {
-  // Sta iedereen toe (*) of specifieke domeinen uit je env
   const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',');
   const origin = req.headers.origin;
 
@@ -21,12 +20,11 @@ function setCorsHeaders(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-  // Preflight check (browser vraagt: mag ik dit sturen?)
   if (req.method === 'OPTIONS') {
     res.status(200).end();
-    return true; // Stop hier, request afgehandeld
+    return true; 
   }
-  return false; // Ga door met de echte logica
+  return false; 
 }
 
 function dfetch(path, init = {}) {
@@ -42,7 +40,6 @@ function dfetch(path, init = {}) {
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  // Caching uit
   return fetch(url, { ...init, headers, cache: 'no-store' });
 }
 
@@ -57,36 +54,29 @@ async function hashToPercent(input){
 }
 
 /* =========================
-   BEST MATCH RULE LOOKUP
+   BEST MATCH RULE LOOKUP (ROBUUSTE VERSIE)
    ========================= */
 
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
+  // We halen nu ALLE actieve regels op voor dit Offer ID (of regels zonder offer ID).
+  // We laten de complexe filtering op aff/sub over aan Javascript om "null" vs "" problemen te voorkomen.
+  
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
-  p.append('limit', '5000'); // Ruime limiet
-  p.append('sort[]', '-id'); // Nieuwste eerst
+  p.append('limit', '5000'); 
+  p.append('sort[]', '-id'); 
   p.append('filter[_and][0][active][_eq]', 'true');
 
-  if (affiliate_id == null || affiliate_id === '') {
-    p.append('filter[_and][1][affiliate_id][_null]', 'true');
+  // Filter 1: Match op Offer ID OF Offer ID is null (wildcard)
+  if (offer_id) {
+    p.append('filter[_and][1][_or][0][offer_id][_eq]', String(offer_id));
+    p.append('filter[_and][1][_or][1][offer_id][_null]', 'true');
   } else {
-    p.append('filter[_and][1][_or][0][affiliate_id][_eq]', String(affiliate_id));
-    p.append('filter[_and][1][_or][1][affiliate_id][_null]', 'true');
+    p.append('filter[_and][1][offer_id][_null]', 'true');
   }
 
-  if (offer_id == null || offer_id === '') {
-    p.append('filter[_and][2][offer_id][_null]', 'true');
-  } else {
-    p.append('filter[_and][2][_or][0][offer_id][_eq]', String(offer_id));
-    p.append('filter[_and][2][_or][1][offer_id][_null]', 'true');
-  }
-
-  if (sub_id == null || sub_id === '') {
-    p.append('filter[_and][3][sub_id][_null]', 'true');
-  } else {
-    p.append('filter[_and][3][_or][0][sub_id][_eq]', String(sub_id));
-    p.append('filter[_and][3][_or][1][sub_id][_null]', 'true');
-  }
+  // We filteren NIET meer op Affiliate/Sub in de database query.
+  // Dit lost het probleem op dat Directus "" (leeg) niet ziet als NULL.
 
   const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
   if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
@@ -95,16 +85,27 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
 }
 
 function matchScore(rule, lead){
-  const eq = (ruleVal, leadVal) => ruleVal == null ? true : String(ruleVal) === String(leadVal ?? '');
-  const okAff = eq(rule.affiliate_id, lead.affiliate_id);
-  const okOff = eq(rule.offer_id,     lead.offer_id);
-  const okSub = eq(rule.sub_id,       lead.sub_id);
+  // HELPER: Behandel NULL én LEGE STRING ("") als wildcard (dus match)
+  const isWildcard = (val) => val === null || val === undefined || String(val).trim() === '';
+  
+  // Vergelijkingsfunctie
+  const check = (ruleVal, leadVal) => {
+    if (isWildcard(ruleVal)) return true; // Regel zegt "Maakt niet uit" -> Match
+    return String(ruleVal) === String(leadVal ?? ''); // Anders: Exacte match
+  };
+
+  const okAff = check(rule.affiliate_id, lead.affiliate_id);
+  const okOff = check(rule.offer_id,     lead.offer_id);
+  const okSub = check(rule.sub_id,       lead.sub_id);
+
+  // Als één van de velden niet klopt, is deze regel niet geldig
   if(!okAff || !okOff || !okSub) return -1;
 
+  // Score berekenen: Hoe specifieker, hoe beter.
   let s = 0;
-  if (rule.affiliate_id != null) s++;
-  if (rule.offer_id     != null) s++;
-  if (rule.sub_id       != null) s++;
+  if (!isWildcard(rule.affiliate_id)) s++;
+  if (!isWildcard(rule.offer_id))     s++;
+  if (!isWildcard(rule.sub_id))       s++;
   return s;
 }
 
@@ -112,11 +113,12 @@ function selectBestRule(candidates, lead){
   let best = null;
   for(const r of candidates){
     const s = matchScore(r, lead);
-    if(s < 0) continue;
+    if(s < 0) continue; // Geen match
 
     if(!best){ best = { r, s }; continue; }
-    if(s > best.s){ best = { r, s }; continue; }
+    if(s > best.s){ best = { r, s }; continue; } // Betere score (specifieker)
 
+    // Tie-break: Nieuwste wint
     if(s === best.s){
       const da = new Date(r.date_created || 0).getTime();
       const db = new Date(best.r.date_created || 0).getTime();
@@ -199,7 +201,6 @@ async function postbackToAffise(clickid) {
 /* ===== Handler ===== */
 
 export default async function handler(req, res) {
-  // CORS CHECK EERST
   if (setCorsHeaders(req, res)) return;
 
   if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'Method not allowed' });
@@ -224,7 +225,7 @@ export default async function handler(req, res) {
     // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // GEEN REGEL? -> Loggen + Rejecten
+    // Geen regel gevonden? -> Reject (en tellen!)
     if (!rule) {
        await incCounters({
           date: todayISO(),
