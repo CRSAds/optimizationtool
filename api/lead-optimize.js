@@ -4,7 +4,7 @@ const DIRECTUS_URL        = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN      = process.env.DIRECTUS_TOKEN;
 const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
-const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules'; // let op: hoofdletter O
+const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
 function dfetch(path, init = {}) {
   if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
@@ -20,7 +20,8 @@ function dfetch(path, init = {}) {
     'Content-Type': 'application/json',
   };
   
-  // AANGEPAST: cache: 'no-store' zorgt dat we altijd verse regels krijgen
+  // FIX 1: Caching UITZETTEN. 
+  // Dit is cruciaal. Anders 'ziet' Vercel je nieuwe regel de eerste minuten niet.
   return fetch(url, { ...init, headers, cache: 'no-store' });
 }
 
@@ -38,17 +39,15 @@ async function hashToPercent(input){
    BEST MATCH RULE LOOKUP
    ========================= */
 
-// Kandidaten: regels die niet in tegenspraak zijn (eq of null/wildcard)
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
   
-  // AANGEPAST: Limiet verhoogd van 300 naar 5000 zodat nieuwe regels niet wegvallen
+  // Preventief de limiet verhogen (ook al heb je er nu minder, dit voorkomt problemen in de toekomst)
   p.append('limit', '5000'); 
-  p.append('sort[]', '-id'); // AANGEPAST: Nieuwste eerst (optioneel, maar veiliger)
+  p.append('sort[]', '-id'); // Nieuwste eerst
   p.append('filter[_and][0][active][_eq]', 'true');
 
-  // affiliate: (eq) OR (_null)
   if (affiliate_id == null || affiliate_id === '') {
     p.append('filter[_and][1][affiliate_id][_null]', 'true');
   } else {
@@ -56,7 +55,6 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
     p.append('filter[_and][1][_or][1][affiliate_id][_null]', 'true');
   }
 
-  // offer: (eq) OR (_null)
   if (offer_id == null || offer_id === '') {
     p.append('filter[_and][2][offer_id][_null]', 'true');
   } else {
@@ -64,7 +62,6 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
     p.append('filter[_and][2][_or][1][offer_id][_null]', 'true');
   }
 
-  // sub: (eq) OR (_null)
   if (sub_id == null || sub_id === '') {
     p.append('filter[_and][3][sub_id][_null]', 'true');
   } else {
@@ -78,8 +75,6 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   return Array.isArray(j?.data) ? j.data : [];
 }
 
-// Score = aantal NIET-null velden in de regel die matchen (0..3)
-// Regel-waarde null = wildcard ⇒ telt niet mee voor score, maar blokkeert ook niet.
 function matchScore(rule, lead){
   const eq = (ruleVal, leadVal) => ruleVal == null ? true : String(ruleVal) === String(leadVal ?? '');
   const okAff = eq(rule.affiliate_id, lead.affiliate_id);
@@ -94,7 +89,6 @@ function matchScore(rule, lead){
   return s;
 }
 
-// Beste regel: hoogste score → tie-break: nieuwst (date_created) → kleinste id
 function selectBestRule(candidates, lead){
   let best = null;
   for(const r of candidates){
@@ -121,7 +115,7 @@ async function findRule(lead){
   return selectBestRule(candidates, lead);
 }
 
-/* ===== Counters (incl. rule_id) ===== */
+/* ===== Counters ===== */
 
 async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
   const filter = {
@@ -174,7 +168,7 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addT
 }
 
 async function postbackToAffise(clickid) {
-  if (!AFFISE_POSTBACK_URL) return false; // optioneel
+  if (!AFFISE_POSTBACK_URL) return false;
   if (!clickid) throw new Error('clickid missing');
   const url = new URL(AFFISE_POSTBACK_URL);
   url.searchParams.set('clickid', String(clickid));
@@ -190,10 +184,7 @@ export default async function handler(req, res) {
 
   try {
     if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
-      const miss = [];
-      if (!DIRECTUS_URL)  miss.push('DIRECTUS_URL');
-      if (!DIRECTUS_TOKEN) miss.push('DIRECTUS_TOKEN');
-      return res.status(500).json({ ok:false, error:`Missing env var(s): ${miss.join(', ')}` });
+      return res.status(500).json({ ok:false, error:'Missing env var(s)' });
     }
 
     const p = req.body || {};
@@ -208,14 +199,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
     }
 
-    // 1) Beste regel op basis van "meeste overeenkomsten"
+    // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // Als er GEEN regel gevonden wordt, slaan we ook niets op in de counters.
-    // Dit was waarschijnlijk het probleem met de nieuwe offers.
-    if (!rule) return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
+    // FIX 2: Geen regel gevonden?
+    // EERST tellen in database, DAN pas rejecten.
+    // Zo zie je in je dashboard tenminste dat er traffic is (rejected).
+    if (!rule) {
+       await incCounters({
+          date: todayISO(),
+          affiliate_id: lead.affiliate_id,
+          offer_id: lead.offer_id,
+          sub_id: lead.sub_id,
+          rule_id: null, 
+          addTotal: 1,
+          addAccepted: 0
+       });
+       return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
+    }
 
-    // 2) (optioneel) cap per dag
+    // 2) Cap per dag
     if (rule.cap_per_day && Number(rule.cap_per_day) > 0) {
       const { accepted } = await getCounters({
         date: todayISO(),
@@ -242,13 +245,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3) % beslissing (deterministisch)
+    // 3) % beslissing
     const score = await hashToPercent(
       `${lead.lead_id}:${lead.affiliate_id}:${lead.offer_id}:${lead.sub_id ?? 'null'}:${HASH_SECRET}`
     );
     const accept = score < Number(rule.percent_accept || 0);
 
-    // 4) Counters
+    // 4) Counters update
     await incCounters({
       date: todayISO(),
       affiliate_id: lead.affiliate_id,
@@ -259,7 +262,7 @@ export default async function handler(req, res) {
       addAccepted: accept ? 1 : 0,
     });
 
-    // 5) Postback bij accept
+    // 5) Postback
     if (accept) {
       try {
         const forwarded = await postbackToAffise(lead.clickid);
