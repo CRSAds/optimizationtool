@@ -6,6 +6,29 @@ const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
+// --- 1. CORS LOGICA TOEVOEGEN ---
+function setCorsHeaders(req, res) {
+  // Sta iedereen toe (*) of specifieke domeinen uit je env
+  const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',');
+  const origin = req.headers.origin;
+
+  if (origin && (allowedOrigins.includes('*') || allowedOrigins.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Preflight check (browser vraagt: mag ik dit sturen?)
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return true; // Stop hier, request afgehandeld
+  }
+  return false; // Ga door met de echte logica
+}
+
 function dfetch(path, init = {}) {
   if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
     const miss = [];
@@ -19,9 +42,7 @@ function dfetch(path, init = {}) {
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  
-  // FIX 1: Caching UITZETTEN. 
-  // Dit is cruciaal. Anders 'ziet' Vercel je nieuwe regel de eerste minuten niet.
+  // Caching uit
   return fetch(url, { ...init, headers, cache: 'no-store' });
 }
 
@@ -42,9 +63,7 @@ async function hashToPercent(input){
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
-  
-  // Preventief de limiet verhogen (ook al heb je er nu minder, dit voorkomt problemen in de toekomst)
-  p.append('limit', '5000'); 
+  p.append('limit', '5000'); // Ruime limiet
   p.append('sort[]', '-id'); // Nieuwste eerst
   p.append('filter[_and][0][active][_eq]', 'true');
 
@@ -180,6 +199,9 @@ async function postbackToAffise(clickid) {
 /* ===== Handler ===== */
 
 export default async function handler(req, res) {
+  // CORS CHECK EERST
+  if (setCorsHeaders(req, res)) return;
+
   if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'Method not allowed' });
 
   try {
@@ -202,9 +224,7 @@ export default async function handler(req, res) {
     // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // FIX 2: Geen regel gevonden?
-    // EERST tellen in database, DAN pas rejecten.
-    // Zo zie je in je dashboard tenminste dat er traffic is (rejected).
+    // GEEN REGEL? -> Loggen + Rejecten
     if (!rule) {
        await incCounters({
           date: todayISO(),
