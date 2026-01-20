@@ -76,6 +76,9 @@ function mapIn(p) {
   if ('min_volume'     in p) body.min_volume     = Number(p.min_volume ?? 20);
   if ('auto_pilot'     in p) body.auto_pilot     = !!p.auto_pilot;
   
+  // NIEUW: We voegen hier min_cpc toe (Doel EPC)
+  if ('min_cpc'        in p) body.min_cpc        = Number(p.min_cpc ?? 0);
+  
   return body;
 }
 
@@ -92,7 +95,8 @@ export default async function handler(req, res) {
     // --- GET: Regels ophalen ---
     if (req.method === 'GET') {
       const qs = new URLSearchParams({
-        fields: 'id,Omschrijving,description,affiliate_id,offer_id,sub_id,percent_accept,priority,active,auto_pilot,target_margin,min_volume',
+        // AANGEPAST: min_cpc toegevoegd aan de fields lijst
+        fields: 'id,Omschrijving,description,affiliate_id,offer_id,sub_id,percent_accept,priority,active,auto_pilot,target_margin,min_volume,min_cpc',
         sort: 'priority',
         limit: '500',
       });
