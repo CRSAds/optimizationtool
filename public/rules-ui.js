@@ -9,6 +9,8 @@
     if (mount.getAttribute('data-loaded') === 'true') return;
     mount.setAttribute('data-loaded', 'true');
 
+    // AANGEPAST: Betere kolomverdeling. Omschrijving is nu vast (300px) ipv auto.
+    // De overige kolommen hebben nu meer ademruimte (80-100px).
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -30,13 +32,7 @@
           <div class="table-wrap">
             <table class="rules">
               <colgroup>
-                 <col style="width:30px">
-                 <col style="width:60px">
-                 <col style="width:auto">
-                 <col style="width:50px">
-                 <col style="width:50px">
-                 
-                 <col style="width:70px"> <col style="width:60px"> <col style="width:80px"> <col style="width:60px"> <col style="width:50px"> <col style="width:40px"> <col style="width:90px"> </colgroup>
+                 <col style="width:40px">  <col style="width:90px">  <col style="width:300px"> <col style="width:80px">  <col style="width:80px">  <col style="width:90px">  <col style="width:70px">  <col style="width:90px">  <col style="width:80px">  <col style="width:70px">  <col style="width:60px">  <col style="width:120px"> </colgroup>
               <thead>
                 <tr>
                   <th></th>
@@ -45,7 +41,9 @@
                   <th>Aff</th>
                   <th>Sub</th>
                   
-                  <th style="color:#2563eb">Doel EPC</th> <th>Acc %</th>
+                  <th style="color:#2563eb">Doel EPC</th>
+
+                  <th>Acc %</th>
                   <th style="text-align:center">Auto</th>
                   <th>Target</th>
                   <th>Vol</th>
@@ -61,8 +59,8 @@
             <span style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;">NIEUW:</span>
             <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID" style="width:100px;border-color:#93c5fd">
             <input type="text" id="n_desc" class="rules-input" placeholder="Omschrijving" style="flex:1">
-            <input type="text" id="n_aff"  class="rules-input" placeholder="Aff ID" style="width:50px">
-            <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:50px">
+            <input type="text" id="n_aff"  class="rules-input" placeholder="Aff ID" style="width:70px">
+            <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:70px">
             <button id="rui_add" class="rules-btn ok" type="button">Add</button>
           </div>
           <div id="rui_msg" class="rules-empty" style="display:none"></div>
@@ -147,7 +145,6 @@
             ? `<span class="badge badge-auto">AAN</span>` 
             : `<span class="badge badge-off">UIT</span>`;
           
-          // HERSTELD: Log zichtbaar maken
           const pilotLog = it.pilot_log 
             ? `<div style="font-size:10px; color:#dc2626; margin-top:4px; white-space:nowrap">${it.pilot_log}</div>` 
             : '';
@@ -266,7 +263,7 @@
         percent_accept: 100,
         active: true,
         auto_pilot: false,
-        min_cpc: 0 // NIEUW: Default waarde
+        min_cpc: 0
       };
       
       const btn = $('#rui_add');
