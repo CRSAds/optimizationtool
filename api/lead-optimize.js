@@ -10,17 +10,14 @@ const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rul
 async function fetchWithRetry(url, options = {}, retries = 3, backoff = 300) {
   try {
     const res = await fetch(url, options);
-    if (!res.ok) {
-        // Als de server een 5xx error geeft, is het zinvol om opnieuw te proberen
-        if (retries > 0 && res.status >= 500) {
-            await new Promise(r => setTimeout(r, backoff));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2);
-        }
-        throw new Error(`Request failed with status ${res.status}`);
+    // Als server 5xx error geeft, proberen we het opnieuw.
+    if (!res.ok && res.status >= 500 && retries > 0) {
+        throw new Error(`Server error ${res.status}`);
     }
     return res;
   } catch (err) {
     if (retries > 0) {
+      // Wacht even (backoff) en probeer opnieuw
       await new Promise(r => setTimeout(r, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
@@ -82,8 +79,6 @@ async function hashToPercent(input){
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
-  
-  // Limiet ruim ingesteld voor volumes
   p.append('limit', '5000'); 
   p.append('sort[]', '-id'); 
   p.append('filter[_and][0][active][_eq]', 'true');
@@ -199,16 +194,25 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addT
   }
 }
 
-// AANGEPAST: Nu met Retry en betere logging
+// RETRY LOGICA
 async function postbackToAffise(clickid) {
-  if (!AFFISE_POSTBACK_URL) return false;
+  if (!AFFISE_POSTBACK_URL) {
+    console.error("❌ AFFISE_POSTBACK_URL missing");
+    return false;
+  }
   if (!clickid) throw new Error('clickid missing');
   
   const url = new URL(AFFISE_POSTBACK_URL);
   url.searchParams.set('clickid', String(clickid));
   
-  // Gebruik de nieuwe retry functie (3 pogingen)
+  // Retry 3x
   const r = await fetchWithRetry(url.toString(), { method: 'GET' }, 3);
+  
+  if (!r.ok) {
+     const txt = await r.text();
+     throw new Error(`Affise HTTP ${r.status}: ${txt}`);
+  }
+  
   return true;
 }
 
@@ -233,7 +237,6 @@ export default async function handler(req, res) {
       clickid     : p.clickid || p.click_id || p.transaction_id || '',
     };
     
-    // Validatie
     if (!lead.lead_id || !lead.affiliate_id || !lead.offer_id) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
     }
@@ -241,7 +244,7 @@ export default async function handler(req, res) {
     // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // Geen regel? Rejecten (en tellen!)
+    // Geen regel? Rejecten en tellen (Total+1, Acc+0)
     if (!rule) {
        await incCounters({
           date: todayISO(),
@@ -286,54 +289,56 @@ export default async function handler(req, res) {
     const score = await hashToPercent(
       `${lead.lead_id}:${lead.affiliate_id}:${lead.offer_id}:${lead.sub_id ?? 'null'}:${HASH_SECRET}`
     );
-    const accept = score < Number(rule.percent_accept || 0);
+    // Beslissing op basis van regels (nog niet definitief, postback moet ook lukken)
+    const ruleSaysAccept = score < Number(rule.percent_accept || 0);
 
-    // AANGEPAST: Parallelle uitvoering voor snelheid
-    // We starten database update én postback tegelijk.
-    // Dit voorkomt dat een trage database de postback vertraagt (of andersom).
-    
-    const tasks = [];
+    // 4) Postback uitvoeren (indien geaccepteerd door regels)
+    let postbackSuccess = false;
+    let postbackError = null;
 
-    // Taak 1: Database teller bijwerken (Dashboard is leading: accept = accepted)
-    tasks.push(incCounters({
+    if (ruleSaysAccept) {
+      try {
+        await postbackToAffise(lead.clickid);
+        postbackSuccess = true;
+      } catch (e) {
+        console.error(`POSTBACK FAILED lead=${lead.lead_id}`, e);
+        postbackError = String(e);
+        postbackSuccess = false;
+      }
+    }
+
+    // 5) Database Counters Bijwerken
+    // We tellen de lead ALTIJD als total.
+    // We tellen hem ALLEEN als accepted als de postback ook echt gelukt is.
+    await incCounters({
       date: todayISO(),
       affiliate_id: lead.affiliate_id,
       offer_id: lead.offer_id,
       sub_id: lead.sub_id,
       rule_id: rule.id,
       addTotal: 1,
-      addAccepted: accept ? 1 : 0,
-    }));
+      // CRUCIAAL: Alleen +1 als de postback gelukt is.
+      addAccepted: postbackSuccess ? 1 : 0, 
+    });
 
-    // Taak 2: Postback naar Affise (alleen als accept)
-    let postbackPromise = Promise.resolve(false);
-    if (accept) {
-       postbackPromise = postbackToAffise(lead.clickid)
-         .then(() => true)
-         .catch(e => {
-            console.error(`POSTBACK FAILED for lead ${lead.lead_id}:`, e);
-            return false;
-         });
-       tasks.push(postbackPromise);
-    }
-
-    // Wacht op alles
-    await Promise.all(tasks);
-    const forwarded = await postbackPromise; // Resultaat ophalen
-
-    // Response naar client (browser/landingpage)
-    if (accept) {
+    // 6) Response naar gebruiker
+    if (postbackSuccess) {
       return res.status(200).json({
         ok:true, 
         decision:'accept', 
-        forwarded: forwarded, // Geeft aan of het technisch gelukt is, maar dashboard heeft al geteld
+        forwarded: true, 
         rule_level: level, 
         rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
       });
     } else {
+      // Als de regel 'Ja' zei, maar Affise 'Nee' (of timeout), is het eindresultaat Reject.
       return res.status(200).json({
         ok:true, 
         decision:'reject', 
+        // Geef duidelijk aan waarom (regel of postback fout)
+        reason: ruleSaysAccept ? 'postback-failed' : 'rule-percentage',
+        error: postbackError,
+        forwarded: false, 
         rule_level: level, 
         rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
       });
