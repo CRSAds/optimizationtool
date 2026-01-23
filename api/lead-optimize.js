@@ -6,6 +6,28 @@ const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
+// --- HELPER: ROBUUSTE FETCH MET RETRY ---
+async function fetchWithRetry(url, options = {}, retries = 3, backoff = 300) {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+        // Als de server een 5xx error geeft, is het zinvol om opnieuw te proberen
+        if (retries > 0 && res.status >= 500) {
+            await new Promise(r => setTimeout(r, backoff));
+            return fetchWithRetry(url, options, retries - 1, backoff * 2);
+        }
+        throw new Error(`Request failed with status ${res.status}`);
+    }
+    return res;
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, backoff));
+      return fetchWithRetry(url, options, retries - 1, backoff * 2);
+    }
+    throw err;
+  }
+}
+
 // --- 1. CORS LOGICA ---
 function setCorsHeaders(req, res) {
   const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',');
@@ -54,29 +76,24 @@ async function hashToPercent(input){
 }
 
 /* =========================
-   BEST MATCH RULE LOOKUP (ROBUUSTE VERSIE)
+   BEST MATCH RULE LOOKUP
    ========================= */
 
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
-  // We halen nu ALLE actieve regels op voor dit Offer ID (of regels zonder offer ID).
-  // We laten de complexe filtering op aff/sub over aan Javascript om "null" vs "" problemen te voorkomen.
-  
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
+  
+  // Limiet ruim ingesteld voor volumes
   p.append('limit', '5000'); 
   p.append('sort[]', '-id'); 
   p.append('filter[_and][0][active][_eq]', 'true');
 
-  // Filter 1: Match op Offer ID OF Offer ID is null (wildcard)
   if (offer_id) {
     p.append('filter[_and][1][_or][0][offer_id][_eq]', String(offer_id));
     p.append('filter[_and][1][_or][1][offer_id][_null]', 'true');
   } else {
     p.append('filter[_and][1][offer_id][_null]', 'true');
   }
-
-  // We filteren NIET meer op Affiliate/Sub in de database query.
-  // Dit lost het probleem op dat Directus "" (leeg) niet ziet als NULL.
 
   const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
   if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
@@ -85,23 +102,18 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
 }
 
 function matchScore(rule, lead){
-  // HELPER: Behandel NULL én LEGE STRING ("") als wildcard (dus match)
   const isWildcard = (val) => val === null || val === undefined || String(val).trim() === '';
-  
-  // Vergelijkingsfunctie
   const check = (ruleVal, leadVal) => {
-    if (isWildcard(ruleVal)) return true; // Regel zegt "Maakt niet uit" -> Match
-    return String(ruleVal) === String(leadVal ?? ''); // Anders: Exacte match
+    if (isWildcard(ruleVal)) return true; 
+    return String(ruleVal) === String(leadVal ?? ''); 
   };
 
   const okAff = check(rule.affiliate_id, lead.affiliate_id);
   const okOff = check(rule.offer_id,     lead.offer_id);
   const okSub = check(rule.sub_id,       lead.sub_id);
 
-  // Als één van de velden niet klopt, is deze regel niet geldig
   if(!okAff || !okOff || !okSub) return -1;
 
-  // Score berekenen: Hoe specifieker, hoe beter.
   let s = 0;
   if (!isWildcard(rule.affiliate_id)) s++;
   if (!isWildcard(rule.offer_id))     s++;
@@ -113,12 +125,11 @@ function selectBestRule(candidates, lead){
   let best = null;
   for(const r of candidates){
     const s = matchScore(r, lead);
-    if(s < 0) continue; // Geen match
+    if(s < 0) continue; 
 
     if(!best){ best = { r, s }; continue; }
-    if(s > best.s){ best = { r, s }; continue; } // Betere score (specifieker)
+    if(s > best.s){ best = { r, s }; continue; } 
 
-    // Tie-break: Nieuwste wint
     if(s === best.s){
       const da = new Date(r.date_created || 0).getTime();
       const db = new Date(best.r.date_created || 0).getTime();
@@ -188,13 +199,16 @@ async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addT
   }
 }
 
+// AANGEPAST: Nu met Retry en betere logging
 async function postbackToAffise(clickid) {
   if (!AFFISE_POSTBACK_URL) return false;
   if (!clickid) throw new Error('clickid missing');
+  
   const url = new URL(AFFISE_POSTBACK_URL);
   url.searchParams.set('clickid', String(clickid));
-  const r = await fetch(url.toString(), { method: 'GET' });
-  if (!r.ok) throw new Error(`Affise postback ${r.status}: ${await r.text()}`);
+  
+  // Gebruik de nieuwe retry functie (3 pogingen)
+  const r = await fetchWithRetry(url.toString(), { method: 'GET' }, 3);
   return true;
 }
 
@@ -218,6 +232,8 @@ export default async function handler(req, res) {
       sub_id      : (p.sub_id === undefined || p.sub_id === null || p.sub_id === '') ? null : String(p.sub_id),
       clickid     : p.clickid || p.click_id || p.transaction_id || '',
     };
+    
+    // Validatie
     if (!lead.lead_id || !lead.affiliate_id || !lead.offer_id) {
       return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
     }
@@ -225,7 +241,7 @@ export default async function handler(req, res) {
     // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // Geen regel gevonden? -> Reject (en tellen!)
+    // Geen regel? Rejecten (en tellen!)
     if (!rule) {
        await incCounters({
           date: todayISO(),
@@ -272,8 +288,14 @@ export default async function handler(req, res) {
     );
     const accept = score < Number(rule.percent_accept || 0);
 
-    // 4) Counters update
-    await incCounters({
+    // AANGEPAST: Parallelle uitvoering voor snelheid
+    // We starten database update én postback tegelijk.
+    // Dit voorkomt dat een trage database de postback vertraagt (of andersom).
+    
+    const tasks = [];
+
+    // Taak 1: Database teller bijwerken (Dashboard is leading: accept = accepted)
+    tasks.push(incCounters({
       date: todayISO(),
       affiliate_id: lead.affiliate_id,
       offer_id: lead.offer_id,
@@ -281,32 +303,44 @@ export default async function handler(req, res) {
       rule_id: rule.id,
       addTotal: 1,
       addAccepted: accept ? 1 : 0,
-    });
+    }));
 
-    // 5) Postback
+    // Taak 2: Postback naar Affise (alleen als accept)
+    let postbackPromise = Promise.resolve(false);
     if (accept) {
-      try {
-        const forwarded = await postbackToAffise(lead.clickid);
-        return res.status(200).json({
-          ok:true, decision:'accept', forwarded, rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
-          }
-        });
-      } catch (e) {
-        return res.status(200).json({
-          ok:true, decision:'accept', forwarded:false, error:String(e), rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
-          }
-        });
-      }
+       postbackPromise = postbackToAffise(lead.clickid)
+         .then(() => true)
+         .catch(e => {
+            console.error(`POSTBACK FAILED for lead ${lead.lead_id}:`, e);
+            return false;
+         });
+       tasks.push(postbackPromise);
+    }
+
+    // Wacht op alles
+    await Promise.all(tasks);
+    const forwarded = await postbackPromise; // Resultaat ophalen
+
+    // Response naar client (browser/landingpage)
+    if (accept) {
+      return res.status(200).json({
+        ok:true, 
+        decision:'accept', 
+        forwarded: forwarded, // Geeft aan of het technisch gelukt is, maar dashboard heeft al geteld
+        rule_level: level, 
+        rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
+      });
     } else {
       return res.status(200).json({
-        ok:true, decision:'reject', rule_level: level, rule: {
-          id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
-        }
+        ok:true, 
+        decision:'reject', 
+        rule_level: level, 
+        rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
       });
     }
+
   } catch (e) {
+    console.error("Handler Error:", e);
     return res.status(500).json({ ok:false, error:String(e) });
   }
 }
