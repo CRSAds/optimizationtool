@@ -44,9 +44,8 @@ function dFetch(path, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
-// --- MAPPING FUNCTIE (Nieuw toegevoegd voor POST) ---
+// --- MAPPING FUNCTIE ---
 function mapIn(p) {
-  // Zoek naar description of Omschrijving in de input
   const desc =
     p?.description ??
     p?.Omschrijving ??
@@ -57,12 +56,10 @@ function mapIn(p) {
 
   const body = {};
   
-  // Als er een beschrijving is gevonden, map deze naar 'Omschrijving' (voor Directus)
   if (desc !== undefined) {
     body.Omschrijving = desc;
   }
 
-  // Map de overige velden direct
   if ('affiliate_id'   in p) body.affiliate_id   = p.affiliate_id === '' ? null : p.affiliate_id;
   if ('offer_id'       in p) body.offer_id       = p.offer_id     === '' ? null : p.offer_id;
   if ('sub_id'         in p) {
@@ -76,8 +73,9 @@ function mapIn(p) {
   if ('min_volume'     in p) body.min_volume     = Number(p.min_volume ?? 20);
   if ('auto_pilot'     in p) body.auto_pilot     = !!p.auto_pilot;
   
-  // NIEUW: We voegen hier min_cpc toe (Doel EPC)
+  // Velden voor Auto Pilot details
   if ('min_cpc'        in p) body.min_cpc        = Number(p.min_cpc ?? 0);
+  if ('pilot_log'      in p) body.pilot_log      = String(p.pilot_log || '');
   
   return body;
 }
@@ -85,18 +83,17 @@ function mapIn(p) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  // Auth Check
   const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
   if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) {
     return res.status(403).json({ ok: false, error: 'forbidden' });
   }
 
   try {
-    // --- GET: Regels ophalen ---
+    // --- GET ---
     if (req.method === 'GET') {
       const qs = new URLSearchParams({
-        // AANGEPAST: min_cpc toegevoegd aan de fields lijst
-        fields: 'id,Omschrijving,description,affiliate_id,offer_id,sub_id,percent_accept,priority,active,auto_pilot,target_margin,min_volume,min_cpc',
+        // AANGEPAST: pilot_log toegevoegd aan de fields lijst!
+        fields: 'id,Omschrijving,description,affiliate_id,offer_id,sub_id,percent_accept,priority,active,auto_pilot,target_margin,min_volume,min_cpc,pilot_log',
         sort: 'priority',
         limit: '500',
       });
@@ -108,16 +105,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, items: j.data || [] });
     }
 
-    // --- PATCH: Regels updaten ---
+    // --- PATCH ---
     if (req.method === 'PATCH') {
       const { keys, data } = req.body;
       if (!keys || !Array.isArray(keys) || !data) {
         return res.status(400).json({ ok: false, error: 'Invalid body' });
       }
-      
-      // We gebruiken hier mapIn niet omdat PATCH vaak partiële updates zijn, 
-      // maar voor consistentie zou dat in de toekomst wel kunnen. 
-      // Voor nu laten we PATCH zoals hij was omdat die werkte via de bulk update logic.
 
       const r = await dFetch(`/items/Optimization_rules`, {
         method: 'PATCH',
@@ -129,9 +122,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, data: j.data });
     }
 
-    // --- POST: Nieuwe regel aanmaken (HIER ZAT HET PROBLEEM) ---
+    // --- POST ---
     if (req.method === 'POST') {
-      // Gebruik mapIn om de velden (vooral description) goed te zetten
       const payload = mapIn(req.body);
       
       const r = await dFetch(`/items/Optimization_rules`, {
@@ -144,7 +136,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, data: j.data });
     }
 
-    // --- DELETE: Regels verwijderen ---
+    // --- DELETE ---
     if (req.method === 'DELETE') {
       const ids = req.body;
       if (!Array.isArray(ids)) return res.status(400).json({ error: 'Body must be array of IDs' });
