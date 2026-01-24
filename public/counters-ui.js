@@ -42,7 +42,7 @@
       </div>
     `;
 
-    const $ = (s) => document.querySelector(s); // Let op: document selector zodat we ook buiten de mount kunnen zoeken
+    const $ = (s) => document.querySelector(s);
     const mount$ = (s) => mount.querySelector(s);
     
     // Formatters
@@ -51,12 +51,10 @@
     const pct = (a,t)=> t>0 ? (100*a/t) : 0;
     const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     
-    // Token Logic
     const tokenInput = mount$('#c_token');
     tokenInput.value = localStorage.getItem('rui_token') || 'ditiseenlanggeheimtoken';
     tokenInput.addEventListener('change', e=> localStorage.setItem('rui_token', e.target.value.trim()));
 
-    // Mode Selector
     const selMode = mount$('#c_groupmode');
     selMode.value = localStorage.getItem('c_groupmode') || 'date';
     selMode.addEventListener('change', ()=> {
@@ -64,7 +62,6 @@
       runCounters();
     });
 
-    // Date Presets
     function setPreset(which){
       const d = new Date(); const pad = n=> String(n).padStart(2,'0');
       const toIso = (dt)=> `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
@@ -78,7 +75,6 @@
 
     let RULES_MAP = null;
 
-    // Functie: Haal regels op en vul de Widget (als die bestaat)
     async function ensureRulesAndLogs(){
       try {
         const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
@@ -87,8 +83,13 @@
         const logs = [];
 
         (j.items || []).forEach(it => {
-          RULES_MAP[it.id] = { auto_pilot: !!it.auto_pilot, target_margin: Number(it.target_margin || 15), percent_accept: it.percent_accept };
-          // Verzamel logs
+          RULES_MAP[it.id] = { 
+             auto_pilot: !!it.auto_pilot, 
+             target_margin: Number(it.target_margin || 15), 
+             percent_accept: it.percent_accept,
+             min_cpc: Number(it.min_cpc || 0) // <--- Doel EPC ophalen
+          };
+          
           if(it.pilot_log) {
              logs.push({ 
                id: it.id, 
@@ -99,7 +100,6 @@
           }
         });
 
-        // Zoek naar de Widget in de HTML (buiten de mount)
         const widget = document.getElementById('autopilot-logs-widget');
         const list = document.getElementById('autopilot-logs-list');
         
@@ -124,7 +124,7 @@
       const host = mount$('#c_groups');
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
       try {
-        await ensureRulesAndLogs(); // Haalt regels + vult widget
+        await ensureRulesAndLogs(); 
         
         const q = new URLSearchParams({ 
           date_from: mount$('#c_from').value, 
@@ -164,13 +164,14 @@
         const acc = map.get(key) || { 
           affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, rule_id: it.rule_id,
           total: 0, accepted: 0, actual_margin: it.actual_margin,
-          revenue: 0, cost: 0, profit: 0
+          revenue: 0, cost: 0, profit: 0, visits: 0 // Init visits
         };
         acc.total += Number(it.total_leads || 0);
         acc.accepted += Number(it.accepted_leads || 0);
         acc.revenue += Number(it.revenue || 0);
         acc.cost    += Number(it.cost || 0);
         acc.profit  += Number(it.profit || 0);
+        acc.visits  += Number(it.visits || 0); // Tel visits op
         map.set(key, acc);
       }
       return [...map.values()];
@@ -178,12 +179,14 @@
 
     function renderGroup(mode, key, items){
       const rows = aggregateRows(items);
-      let t_tot=0, t_acc=0, t_rev=0, t_prof=0;
+      let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
       rows.forEach(r => { 
           t_tot += r.total; 
           t_acc += r.accepted; 
           t_rev += r.revenue;
           t_prof += r.profit;
+          t_visits += r.visits;
+          t_cost += r.cost;
       });
 
       const el = document.createElement('div');
@@ -202,14 +205,16 @@
           <table class="rules">
              <colgroup>
                <col style="width:70px"><col style="width:70px"><col style="width:70px">
-               <col style="width:60px"><col style="width:60px"><col style="width:80px">
-               <col style="width:80px"><col style="width:80px"><col style="width:80px">
-               <col style="width:60px"><col style="width:60px"><col style="width:60px">
-             </colgroup>
+               <col style="width:50px"><col style="width:50px"> <col style="width:60px"><col style="width:60px"> <col style="width:60px"> <col style="width:70px"><col style="width:70px"><col style="width:70px"> <col style="width:50px"><col style="width:50px"><col style="width:60px"> </colgroup>
             <thead>
               <tr>
                 <th>Aff</th><th>Off</th><th>Sub</th>
-                <th>Rule</th><th>Target</th><th>Marge %</th>
+                <th>Rule</th><th>Target</th>
+                
+                <th style="color:#2563eb">DoelEPC</th>
+                <th style="color:#2563eb">EPC</th>
+                
+                <th>Marge %</th>
                 <th>Omzet</th><th>Kosten</th><th>Winst</th>
                 <th>Total</th><th>Acc</th><th>Acc %</th>
               </tr>
@@ -219,6 +224,10 @@
                 const rule = RULES_MAP?.[r.rule_id] || {};
                 const target = rule.target_margin || 15;
                 const actual = r.actual_margin;
+                
+                // EPC Berekening: Cost / Visits
+                const targetEpc = rule.min_cpc || 0;
+                const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
                 
                 const isDanger = (actual !== null && actual < target);
                 const marginBadge = actual !== null 
@@ -234,6 +243,10 @@
                     <td>${escapeHtml(r.sub_id)}</td>
                     <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
                     <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
+                    
+                    <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
+                    <td style="font-weight:600">${money(epc)}</td>
+
                     <td>${marginBadge}</td>
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
