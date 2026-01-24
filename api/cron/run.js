@@ -26,15 +26,20 @@ function norm(val) {
   return String(val).trim();
 }
 
+// Functie om emojis en vreemde tekens te strippen
+function cleanString(str) {
+  return str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+}
+
 export default async function handler(req, res) {
   try {
-    // 1. Haal regels op (alleen Auto Pilot AAN)
     const { data: rules } = await dFetch('/items/Optimization_rules?filter[auto_pilot][_eq]=true&limit=2000');
     if (!rules || !rules.length) return res.json({ message: 'No auto-pilot rules found' });
 
     const today = new Date().toISOString().split('T')[0];
 
-    // 2. Haal data uit Supabase
     const { data: stats, error } = await supabase
       .from('offer_performance_v2')
       .select('offer_id, sub_id, margin_pct, shortform_leads, visits, affise_cost, omzet_totaal, day')
@@ -46,7 +51,6 @@ export default async function handler(req, res) {
     const log = [];
     const debug_info = [];
 
-    // 3. Loop door regels
     for (const rule of rules) {
       const identifier = `Offer ${rule.offer_id}` + (rule.sub_id ? ` (Sub ${rule.sub_id})` : '');
       const ruleHasSub = !!rule.sub_id;
@@ -62,7 +66,6 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // AGGREGATIE
       let totalLeads = 0;
       let totalVisits = 0;
       let totalCost = 0;
@@ -98,21 +101,22 @@ export default async function handler(req, res) {
       if (actualMargin < targetMargin) {
         newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
         const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-        logMessage = `${time}: ⚠️ Marge ${actualMargin.toFixed(1)}% < ${targetMargin}%. Acc verlaagd naar ${newAccept}%`;
+        // Let op: Emojis zijn hier weggehaald uit de tekst string
+        logMessage = `${time}: Marge ${actualMargin.toFixed(1)}% < ${targetMargin}%. Acc verlaagd naar ${newAccept}%`;
         reason = "Marge te laag";
       } 
       else if (targetEpc > 0) {
         if (actualEpc > targetEpc) {
            newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
            const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-           logMessage = `${time}: 💰 EPC €${actualEpc.toFixed(2)} > Doel €${targetEpc.toFixed(2)}. Acc verlaagd naar ${newAccept}%`;
+           logMessage = `${time}: EPC E${actualEpc.toFixed(2)} > Doel E${targetEpc.toFixed(2)}. Acc verlaagd naar ${newAccept}%`;
            reason = "EPC te hoog";
         }
         else if (actualEpc < targetEpc) {
            if (actualMargin > (targetMargin + 5)) {
               newAccept = Math.min(100, currentAccept + STEP_CHANGE);
               const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-              logMessage = `${time}: 🤝 EPC €${actualEpc.toFixed(2)} < Doel €${targetEpc.toFixed(2)}. Acc verhoogd naar ${newAccept}%`;
+              logMessage = `${time}: EPC E${actualEpc.toFixed(2)} < Doel E${targetEpc.toFixed(2)}. Acc verhoogd naar ${newAccept}%`;
               reason = "EPC te laag + Marge OK";
            } else {
               reason = `EPC te laag, maar marge (${actualMargin.toFixed(1)}%) te krap`;
@@ -125,19 +129,22 @@ export default async function handler(req, res) {
       }
       
       if (newAccept !== currentAccept) {
+        // CLEANUP: We halen hier voor de zekerheid alle gekke tekens eruit
+        const cleanLog = logMessage ? cleanString(logMessage) : null;
+        
         updates.push({ 
           id: rule.id, 
           percent_accept: newAccept,
-          pilot_log: logMessage 
+          pilot_log: cleanLog 
         });
-        if(logMessage) log.push(`Rule ${rule.id}: ${logMessage}`);
+        if(cleanLog) log.push(`Rule ${rule.id}: ${cleanLog}`);
         debug_info.push(`✅ ${identifier}: AANGEPAST. ${reason}`);
       } else {
         debug_info.push(`ℹ️ ${identifier}: Geen actie. ${reason}`);
       }
     }
 
-    // 4. Update Directus (MET RESPONSE CHECK)
+    // 4. Update Directus
     let directus_response = null;
     if (updates.length > 0) {
       directus_response = await dFetch('/items/Optimization_rules', 'PATCH', updates);
@@ -148,7 +155,7 @@ export default async function handler(req, res) {
       updates_count: updates.length, 
       logs: log,
       debug_analysis: debug_info,
-      directus_response: directus_response // <--- Hier gaan we de fout zien!
+      directus_response: directus_response 
     });
 
   } catch (e) {
