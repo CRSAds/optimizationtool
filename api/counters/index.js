@@ -44,16 +44,12 @@ export default async function handler(req, res) {
     if (date_from) AND.push({ date: { _gte: date_from } });
     if (date_to)   AND.push({ date: { _lte: date_to } });
     
-    // Alleen filteren als er daadwerkelijk iets is ingevuld (niet leeg)
     if (affiliate_id) AND.push({ affiliate_id: { _eq: affiliate_id } });
     if (offer_id) AND.push({ offer_id: { _eq: offer_id } });
     
-    // FIX: Als sub_id leeg is (""), filteren we NIET (toon alles).
-    // Alleen als er expliciet gezocht wordt, passen we het filter toe.
     if (sub_id && sub_id !== 'null') {
        AND.push({ sub_id: { _eq: sub_id } });
     } else if (sub_id === 'null') {
-       // Specifieke check voor 'geen sub id' (als je dat ooit zou willen sturen)
        AND.push({ sub_id: { _null: true } });
     }
 
@@ -75,10 +71,10 @@ export default async function handler(req, res) {
     if (!dRes.ok) throw new Error(JSON.stringify(dJson));
     const counters = dJson.data || [];
 
-    // --- 4. SUPABASE DATA OPHALEN ---
+    // --- 4. SUPABASE DATA OPHALEN (Nu met visits!) ---
     let query = supabase
       .from('offer_performance_v2')
-      .select('offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, day');
+      .select('offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, day, visits'); // <--- Visits toegevoegd
     
     if (date_from) query = query.gte('day', date_from);
     if (date_to)   query = query.lte('day', date_to);
@@ -93,7 +89,6 @@ export default async function handler(req, res) {
 
     // --- 5. MATCH & MERGE ---
     const enriched = counters.map(c => {
-      // Zoek de match in Supabase data
       const match = margins.find(m => 
         norm(m.offer_id) === norm(c.offer_id) && 
         norm(m.sub_id)   === norm(c.sub_id) &&
@@ -103,11 +98,10 @@ export default async function handler(req, res) {
       return {
         ...c,
         actual_margin: match ? (match.margin_pct * 100) : null,
-        
-        // Vertaalslag: Database kolomnaam -> Frontend naam
         revenue: match ? (match.omzet_totaal || 0) : 0,
         cost:    match ? (match.affise_cost || 0)  : 0,
-        profit:  match ? (match.profit || 0)       : 0
+        profit:  match ? (match.profit || 0)       : 0,
+        visits:  match ? (match.visits || 0)       : 0 // <--- Visits doorgeven
       };
     });
 
