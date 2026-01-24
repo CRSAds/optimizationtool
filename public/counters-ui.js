@@ -7,7 +7,7 @@
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // DE RESULTATEN LAYOUT
+    // DE RESULTATEN LAYOUT (Nu inclusief de log widget!)
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -35,8 +35,17 @@
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
 
-          <div class="table-wrap">
-             <div id="c_groups" style="padding-bottom:20px"></div>
+          <div class="table-wrap" style="display:flex; flex-direction:column;">
+             
+             <div id="autopilot-logs-widget" style="display:none; background:#fff1f2; border-bottom:1px solid #fecaca; padding:15px; font-family:'Inter', sans-serif;">
+               <div style="font-weight:700; font-size:13px; color:#991b1b; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                 <span>🤖 Auto Pilot Acties (Laatste ingrepen)</span>
+               </div>
+               <div id="autopilot-logs-list" style="display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; font-size:12px; color:#7f1d1d;">
+               </div>
+             </div>
+
+             <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
           </div>
         </div>
       </div>
