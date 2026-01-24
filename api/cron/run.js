@@ -21,7 +21,6 @@ async function dFetch(path, method = 'GET', body = null) {
   return r.json();
 }
 
-// Helper om waarden veilig te vergelijken
 function norm(val) {
   if (val === null || val === undefined) return '';
   return String(val).trim();
@@ -35,7 +34,7 @@ export default async function handler(req, res) {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // 2. Haal data uit Supabase (Nu incl. omzet_totaal om marge te herberekenen bij aggregatie)
+    // 2. Haal data uit Supabase
     const { data: stats, error } = await supabase
       .from('offer_performance_v2')
       .select('offer_id, sub_id, margin_pct, shortform_leads, visits, affise_cost, omzet_totaal, day')
@@ -52,17 +51,9 @@ export default async function handler(req, res) {
       const identifier = `Offer ${rule.offer_id}` + (rule.sub_id ? ` (Sub ${rule.sub_id})` : '');
       const ruleHasSub = !!rule.sub_id;
 
-      // FILTER DATA: Zoek de juiste rijen in de data
       const matchingRows = stats.filter(s => {
-        // Offer ID moet altijd matchen
         if (norm(s.offer_id) !== norm(rule.offer_id)) return false;
-        
-        // Als regel specifiek Sub ID heeft, moet die matchen
-        if (ruleHasSub) {
-          return norm(s.sub_id) === norm(rule.sub_id);
-        }
-        
-        // Als regel GEEN Sub ID heeft (Algemene regel), pakken we ALLES van dit offer
+        if (ruleHasSub) return norm(s.sub_id) === norm(rule.sub_id);
         return true; 
       });
 
@@ -71,7 +62,7 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // AGGREGATIE: Tel alles bij elkaar op (voor het geval we meerdere sub-ids samenvatten)
+      // AGGREGATIE
       let totalLeads = 0;
       let totalVisits = 0;
       let totalCost = 0;
@@ -84,21 +75,14 @@ export default async function handler(req, res) {
         totalRevenue += (row.omzet_totaal || 0);
       }
 
-      // Bereken Marge & EPC op basis van totalen
-      const actualMargin = totalRevenue > 0 
-         ? ((totalRevenue - totalCost) / totalRevenue) * 100 
-         : 0;
-      
-      const actualEpc = totalVisits > 0 
-         ? (totalCost / totalVisits) // Earnings publisher = Onze Cost
-         : 0;
+      const actualMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
+      const actualEpc = totalVisits > 0 ? (totalCost / totalVisits) : 0;
 
       const currentVolume = totalLeads;
       const minVolume = rule.min_volume || 20;
 
-      // Check volume drempel
       if (currentVolume < minVolume) {
-        debug_info.push(`⚠️ ${identifier}: Volume te laag (${currentVolume} < ${minVolume}). Data van ${matchingRows.length} sub(s).`);
+        debug_info.push(`⚠️ ${identifier}: Volume te laag (${currentVolume} < ${minVolume}).`);
         continue; 
       }
 
@@ -111,26 +95,21 @@ export default async function handler(req, res) {
       let reason = "Alles OK";
 
       // --- BESLIS LOGICA ---
-      
-      // 1. MARGE TE LAAG? (Emergency Brake)
       if (actualMargin < targetMargin) {
         newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
         const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
         logMessage = `${time}: ⚠️ Marge ${actualMargin.toFixed(1)}% < ${targetMargin}%. Acc verlaagd naar ${newAccept}%`;
         reason = "Marge te laag";
       } 
-      // 2. DOEL EPC CHECK
       else if (targetEpc > 0) {
-        // Verdient de publisher te veel? -> Shaven (meer marge pakken)
         if (actualEpc > targetEpc) {
            newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
            const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
            logMessage = `${time}: 💰 EPC €${actualEpc.toFixed(2)} > Doel €${targetEpc.toFixed(2)}. Acc verlaagd naar ${newAccept}%`;
            reason = "EPC te hoog";
         }
-        // Verdient de publisher te weinig? -> Gunnen (als marge het toelaat)
         else if (actualEpc < targetEpc) {
-           if (actualMargin > (targetMargin + 5)) { // Buffer check
+           if (actualMargin > (targetMargin + 5)) {
               newAccept = Math.min(100, currentAccept + STEP_CHANGE);
               const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
               logMessage = `${time}: 🤝 EPC €${actualEpc.toFixed(2)} < Doel €${targetEpc.toFixed(2)}. Acc verhoogd naar ${newAccept}%`;
@@ -145,7 +124,6 @@ export default async function handler(req, res) {
          reason = "Marge OK";
       }
       
-      // Uitvoeren update
       if (newAccept !== currentAccept) {
         updates.push({ 
           id: rule.id, 
@@ -153,22 +131,24 @@ export default async function handler(req, res) {
           pilot_log: logMessage 
         });
         if(logMessage) log.push(`Rule ${rule.id}: ${logMessage}`);
-        debug_info.push(`✅ ${identifier}: AANGEPAST. ${reason} (Op basis van ${matchingRows.length} subs)`);
+        debug_info.push(`✅ ${identifier}: AANGEPAST. ${reason}`);
       } else {
-        debug_info.push(`ℹ️ ${identifier}: Geen actie. ${reason} (Op basis van ${matchingRows.length} subs)`);
+        debug_info.push(`ℹ️ ${identifier}: Geen actie. ${reason}`);
       }
     }
 
-    // 4. Update Directus
+    // 4. Update Directus (MET RESPONSE CHECK)
+    let directus_response = null;
     if (updates.length > 0) {
-      await dFetch('/items/Optimization_rules', 'PATCH', updates);
+      directus_response = await dFetch('/items/Optimization_rules', 'PATCH', updates);
     }
 
     return res.json({ 
       success: true, 
       updates_count: updates.length, 
       logs: log,
-      debug_analysis: debug_info 
+      debug_analysis: debug_info,
+      directus_response: directus_response // <--- Hier gaan we de fout zien!
     });
 
   } catch (e) {
