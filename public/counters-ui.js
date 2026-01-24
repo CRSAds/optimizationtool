@@ -87,7 +87,7 @@
              auto_pilot: !!it.auto_pilot, 
              target_margin: Number(it.target_margin || 15), 
              percent_accept: it.percent_accept,
-             min_cpc: Number(it.min_cpc || 0) // <--- Doel EPC ophalen
+             min_cpc: Number(it.min_cpc || 0)
           };
           
           if(it.pilot_log) {
@@ -164,14 +164,14 @@
         const acc = map.get(key) || { 
           affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, rule_id: it.rule_id,
           total: 0, accepted: 0, actual_margin: it.actual_margin,
-          revenue: 0, cost: 0, profit: 0, visits: 0 // Init visits
+          revenue: 0, cost: 0, profit: 0, visits: 0
         };
         acc.total += Number(it.total_leads || 0);
         acc.accepted += Number(it.accepted_leads || 0);
         acc.revenue += Number(it.revenue || 0);
         acc.cost    += Number(it.cost || 0);
         acc.profit  += Number(it.profit || 0);
-        acc.visits  += Number(it.visits || 0); // Tel visits op
+        acc.visits  += Number(it.visits || 0);
         map.set(key, acc);
       }
       return [...map.values()];
@@ -204,19 +204,15 @@
         <div class="group-body">
           <table class="rules">
              <colgroup>
-               <col style="width:70px"><col style="width:70px"><col style="width:70px">
-               <col style="width:50px"><col style="width:50px"> <col style="width:60px"><col style="width:60px"> <col style="width:60px"> <col style="width:70px"><col style="width:70px"><col style="width:70px"> <col style="width:50px"><col style="width:50px"><col style="width:60px"> </colgroup>
+               <col style="width:70px">  <col style="width:70px">  <col style="width:70px">  <col style="width:50px">  <col style="width:50px">  <col style="width:70px">  <col style="width:70px">  <col style="width:70px">  <col style="width:60px">  <col style="width:60px">  <col style="width:50px">  <col style="width:60px">  <col style="width:60px">  <col style="width:60px">  </colgroup>
             <thead>
               <tr>
-                <th>Aff</th><th>Off</th><th>Sub</th>
-                <th>Rule</th><th>Target</th>
-                
-                <th style="color:#2563eb">DoelEPC</th>
-                <th style="color:#2563eb">EPC</th>
-                
-                <th>Marge %</th>
-                <th>Omzet</th><th>Kosten</th><th>Winst</th>
-                <th>Total</th><th>Acc</th><th>Acc %</th>
+                <th>OFFER</th> <th>AFF</th> <th>SUB</th>
+                <th>TOTAL</th> <th>ACC</th>
+                <th>OMZET</th> <th>KOSTEN</th> <th>WINST</th>
+                <th>ACC RULE</th> <th>ACC %</th>
+                <th>TARGET</th> <th>MARGE %</th>
+                <th style="color:#2563eb">DOEL EPC</th> <th style="color:#2563eb">EPC</th>
               </tr>
             </thead>
             <tbody>
@@ -225,7 +221,7 @@
                 const target = rule.target_margin || 15;
                 const actual = r.actual_margin;
                 
-                // EPC Berekening: Cost / Visits
+                // EPC Berekening
                 const targetEpc = rule.min_cpc || 0;
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
                 
@@ -238,22 +234,25 @@
 
                 return `
                   <tr>
-                    <td>${escapeHtml(r.affiliate_id)}</td>
                     <td>${escapeHtml(r.offer_id)}</td>
+                    <td>${escapeHtml(r.affiliate_id)}</td>
                     <td>${escapeHtml(r.sub_id)}</td>
-                    <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
-                    <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
                     
-                    <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
-                    <td style="font-weight:600">${money(epc)}</td>
-
-                    <td>${marginBadge}</td>
+                    <td>${fmt(r.total)}</td>
+                    <td>${fmt(r.accepted)}</td>
+                    
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
                     <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    <td>${fmt(r.total)}</td>
-                    <td>${fmt(r.accepted)}</td>
+                    
+                    <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
                     <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
+                    
+                    <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
+                    <td>${marginBadge}</td>
+                    
+                    <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
+                    <td style="font-weight:600">${money(epc)}</td>
                   </tr>`;
               }).join('')}
             </tbody>
