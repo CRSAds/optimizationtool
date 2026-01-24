@@ -1,3 +1,5 @@
+// public/counters-ui.js
+
 (function() {
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
@@ -7,7 +9,7 @@
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // DE RESULTATEN LAYOUT (Nu inclusief de log widget!)
+    // DE RESULTATEN LAYOUT (Inclusief log widget)
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -306,6 +308,9 @@
 
     setPreset('last7');
     mount$('#c_run').addEventListener('click', runCounters);
+    
+    // AANGEPAST: Direct laden bij start!
+    runCounters(); 
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp);
