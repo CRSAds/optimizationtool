@@ -6,7 +6,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // CONFIGURATIE
 const STEP_CHANGE = 10;    
-const MIN_ACCEPT = 10;     
+const MIN_ACCEPT = 5;     
 
 async function dFetch(path, method = 'GET', body = null) {
   const opts = {
