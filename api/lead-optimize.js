@@ -6,10 +6,27 @@ const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
-// --- HELPER: ROBUUSTE FETCH MET RETRY ---
-async function fetchWithRetry(url, options = {}, retries = 3, backoff = 300) {
+// --- HELPER: TIME-OUT FETCH ---
+// Kapt de verbinding hard af na 'ms' milliseconden
+const fetchWithTimeout = async (url, options, ms = 4000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
+// --- HELPER: ROBUUSTE FETCH MET RETRY & TIMEOUT ---
+async function fetchWithRetry(url, options = {}, retries = 2, backoff = 300) {
+  try {
+    // Timeout van 4s per request
+    const res = await fetchWithTimeout(url, options, 4000);
+    
     // Als server 5xx error geeft, proberen we het opnieuw.
     if (!res.ok && res.status >= 500 && retries > 0) {
         throw new Error(`Server error ${res.status}`);
@@ -17,6 +34,7 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 300) {
     return res;
   } catch (err) {
     if (retries > 0) {
+      console.warn(`⚠️ Retrying ${url} (${retries} left): ${err.message}`);
       // Wacht even (backoff) en probeer opnieuw
       await new Promise(r => setTimeout(r, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
@@ -48,10 +66,9 @@ function setCorsHeaders(req, res) {
 
 function dfetch(path, init = {}) {
   if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
-    const miss = [];
-    if (!DIRECTUS_URL)  miss.push('DIRECTUS_URL');
-    if (!DIRECTUS_TOKEN) miss.push('DIRECTUS_TOKEN');
-    throw new Error(`Missing env var(s): ${miss.join(', ')}`);
+    console.error("Missing Directus Env Vars");
+    // We rejecten niet hard, maar loggen
+    return Promise.reject(new Error("Configuration Error"));
   }
   const url = `${DIRECTUS_URL}${path}`;
   const headers = {
@@ -59,7 +76,8 @@ function dfetch(path, init = {}) {
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  return fetch(url, { ...init, headers, cache: 'no-store' });
+  // Ook Directus calls krijgen een timeout
+  return fetchWithRetry(url, { ...init, headers, cache: 'no-store' }, 1);
 }
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -79,7 +97,7 @@ async function hashToPercent(input){
 async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   const p = new URLSearchParams();
   p.append('fields', '*,date_created');
-  p.append('limit', '5000'); 
+  p.append('limit', '100'); 
   p.append('sort[]', '-id'); 
   p.append('filter[_and][0][active][_eq]', 'true');
 
@@ -91,7 +109,7 @@ async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
   }
 
   const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
-  if (!r.ok) throw new Error(`Rules ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`Rules fetch failed ${r.status}`);
   const j = await r.json();
   return Array.isArray(j?.data) ? j.data : [];
 }
@@ -138,59 +156,72 @@ function selectBestRule(candidates, lead){
 }
 
 async function findRule(lead){
-  const candidates = await fetchCandidateRules(lead);
-  return selectBestRule(candidates, lead);
+  try {
+    const candidates = await fetchCandidateRules(lead);
+    return selectBestRule(candidates, lead);
+  } catch (e) {
+    console.error("❌ Rule lookup failed:", e);
+    // Bij falen: geen regel -> reject (veilig)
+    return { rule: null, level: 'error' };
+  }
 }
 
 /* ===== Counters ===== */
 
 async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
-  const filter = {
-    _and: [
-      { date: { _eq: date } },
-      { affiliate_id: { _eq: String(affiliate_id) } },
-      { offer_id:     { _eq: String(offer_id) } },
-      sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
-      rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } },
-    ],
-  };
-  const qs = new URLSearchParams({
-    fields: 'id,total_leads,accepted_leads',
-    filter: JSON.stringify(filter),
-    limit: '1',
-  });
-  const res = await dfetch(`/items/Optimization_counters?${qs.toString()}`);
-  if (!res.ok) throw new Error(`Counters ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  const row = json?.data?.[0];
-  return { id: row?.id, total: row?.total_leads ?? 0, accepted: row?.accepted_leads ?? 0 };
+  try {
+    const filter = {
+      _and: [
+        { date: { _eq: date } },
+        { affiliate_id: { _eq: String(affiliate_id) } },
+        { offer_id:     { _eq: String(offer_id) } },
+        sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
+        rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } },
+      ],
+    };
+    const qs = new URLSearchParams({
+      fields: 'id,total_leads,accepted_leads',
+      filter: JSON.stringify(filter),
+      limit: '1',
+    });
+    const res = await dfetch(`/items/Optimization_counters?${qs.toString()}`);
+    if (!res.ok) return { id: null, total: 0, accepted: 0 };
+    const json = await res.json();
+    const row = json?.data?.[0];
+    return { id: row?.id, total: row?.total_leads ?? 0, accepted: row?.accepted_leads ?? 0 };
+  } catch (e) {
+    console.error("Counter fetch failed", e);
+    return { id: null, total: 0, accepted: 0 };
+  }
 }
 
 async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addTotal, addAccepted }) {
-  const cur = await getCounters({ date, affiliate_id, offer_id, sub_id, rule_id });
-  if (!cur.id) {
-    const res = await dfetch('/items/Optimization_counters', {
-      method: 'POST',
-      body: JSON.stringify({
-        date,
-        affiliate_id: String(affiliate_id),
-        offer_id: String(offer_id),
-        sub_id: sub_id == null ? null : String(sub_id),
-        rule_id: rule_id == null ? null : String(rule_id),
-        total_leads: addTotal,
-        accepted_leads: addAccepted,
-      }),
-    });
-    if (!res.ok) throw new Error(`Insert counters ${res.status}: ${await res.text()}`);
-  } else {
-    const res = await dfetch(`/items/Optimization_counters/${cur.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        total_leads: cur.total + addTotal,
-        accepted_leads: cur.accepted + addAccepted,
-      }),
-    });
-    if (!res.ok) throw new Error(`Update counters ${res.status}: ${await res.text()}`);
+  try {
+    const cur = await getCounters({ date, affiliate_id, offer_id, sub_id, rule_id });
+    if (!cur.id) {
+      await dfetch('/items/Optimization_counters', {
+        method: 'POST',
+        body: JSON.stringify({
+          date,
+          affiliate_id: String(affiliate_id),
+          offer_id: String(offer_id),
+          sub_id: sub_id == null ? null : String(sub_id),
+          rule_id: rule_id == null ? null : String(rule_id),
+          total_leads: addTotal,
+          accepted_leads: addAccepted,
+        }),
+      });
+    } else {
+      await dfetch(`/items/Optimization_counters/${cur.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          total_leads: cur.total + addTotal,
+          accepted_leads: cur.accepted + addAccepted,
+        }),
+      });
+    }
+  } catch (e) {
+    console.error("❌ Failed to update counters (non-fatal)", e);
   }
 }
 
@@ -205,8 +236,8 @@ async function postbackToAffise(clickid) {
   const url = new URL(AFFISE_POSTBACK_URL);
   url.searchParams.set('clickid', String(clickid));
   
-  // Retry 3x
-  const r = await fetchWithRetry(url.toString(), { method: 'GET' }, 3);
+  // Retry 2x en strikte timeout
+  const r = await fetchWithRetry(url.toString(), { method: 'GET' }, 2);
   
   if (!r.ok) {
      const txt = await r.text();
@@ -224,10 +255,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'Method not allowed' });
 
   try {
-    if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
-      return res.status(500).json({ ok:false, error:'Missing env var(s)' });
-    }
-
     const p = req.body || {};
     const lead = {
       lead_id     : String(p.lead_id || p.id || ''),
@@ -238,15 +265,16 @@ export default async function handler(req, res) {
     };
     
     if (!lead.lead_id || !lead.affiliate_id || !lead.offer_id) {
-      return res.status(400).json({ ok:false, error:'Missing lead_id, affiliate_id or offer_id' });
+      return res.status(200).json({ ok:false, decision: 'reject', error:'Missing lead_id data' });
     }
 
     // 1) Beste regel zoeken
     const { rule, level } = await findRule(lead);
     
-    // Geen regel? Rejecten en tellen (Total+1, Acc+0)
+    // Geen regel? Rejecten
     if (!rule) {
-       await incCounters({
+       // Fire and forget counter
+       incCounters({
           date: todayISO(),
           affiliate_id: lead.affiliate_id,
           offer_id: lead.offer_id,
@@ -254,7 +282,8 @@ export default async function handler(req, res) {
           rule_id: null, 
           addTotal: 1,
           addAccepted: 0
-       });
+       }).catch(e => console.error(e));
+
        return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
     }
 
@@ -268,7 +297,7 @@ export default async function handler(req, res) {
         rule_id: rule.id,
       });
       if (accepted >= Number(rule.cap_per_day)) {
-        await incCounters({
+        incCounters({
           date: todayISO(),
           affiliate_id: lead.affiliate_id,
           offer_id: lead.offer_id,
@@ -276,11 +305,10 @@ export default async function handler(req, res) {
           rule_id: rule.id,
           addTotal: 1,
           addAccepted: 0
-        });
+        }).catch(e => console.error(e));
+
         return res.status(200).json({
-          ok:true, decision:'reject', reason:'daily-cap', rule_level: level, rule: {
-            id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id
-          }
+          ok:true, decision:'reject', reason:'daily-cap', rule_level: level
         });
       }
     }
@@ -289,10 +317,9 @@ export default async function handler(req, res) {
     const score = await hashToPercent(
       `${lead.lead_id}:${lead.affiliate_id}:${lead.offer_id}:${lead.sub_id ?? 'null'}:${HASH_SECRET}`
     );
-    // Beslissing op basis van regels (nog niet definitief, postback moet ook lukken)
     const ruleSaysAccept = score < Number(rule.percent_accept || 0);
 
-    // 4) Postback uitvoeren (indien geaccepteerd door regels)
+    // 4) Postback uitvoeren
     let postbackSuccess = false;
     let postbackError = null;
 
@@ -307,45 +334,37 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5) Database Counters Bijwerken
-    // We tellen de lead ALTIJD als total.
-    // We tellen hem ALLEEN als accepted als de postback ook echt gelukt is.
-    await incCounters({
+    // 5) Database Counters Bijwerken (Fire and Forget)
+    incCounters({
       date: todayISO(),
       affiliate_id: lead.affiliate_id,
       offer_id: lead.offer_id,
       sub_id: lead.sub_id,
       rule_id: rule.id,
       addTotal: 1,
-      // CRUCIAAL: Alleen +1 als de postback gelukt is.
       addAccepted: postbackSuccess ? 1 : 0, 
-    });
+    }).catch(err => console.error("Counter update failed in background", err));
 
     // 6) Response naar gebruiker
-    if (postbackSuccess) {
-      return res.status(200).json({
-        ok:true, 
-        decision:'accept', 
-        forwarded: true, 
-        rule_level: level, 
-        rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
-      });
-    } else {
-      // Als de regel 'Ja' zei, maar Affise 'Nee' (of timeout), is het eindresultaat Reject.
-      return res.status(200).json({
-        ok:true, 
-        decision:'reject', 
-        // Geef duidelijk aan waarom (regel of postback fout)
-        reason: ruleSaysAccept ? 'postback-failed' : 'rule-percentage',
-        error: postbackError,
-        forwarded: false, 
-        rule_level: level, 
-        rule: { id: rule.id, percent_accept: rule.percent_accept, sub_id: rule.sub_id }
-      });
-    }
+    const responseBody = {
+      ok: true,
+      decision: postbackSuccess ? 'accept' : 'reject',
+      reason: ruleSaysAccept ? (postbackSuccess ? 'rules' : 'postback-failed') : 'rule-percentage',
+      forwarded: postbackSuccess,
+      rule: { id: rule.id, percent: rule.percent_accept },
+      error: postbackError
+    };
+
+    return res.status(200).json(responseBody);
 
   } catch (e) {
-    console.error("Handler Error:", e);
-    return res.status(500).json({ ok:false, error:String(e) });
+    // 🔥 CRASH NOOIT: Stuur altijd 200 OK naar Databowl
+    console.error("CRITICAL ERROR:", e);
+    return res.status(200).json({ 
+        ok: false, 
+        decision: 'reject', 
+        error: 'Internal Server Error (Handled)', 
+        details: String(e) 
+    });
   }
 }
