@@ -69,12 +69,37 @@ export default async function handler(req, res) {
     
     const dJson = await dRes.json();
     if (!dRes.ok) throw new Error(JSON.stringify(dJson));
-    const counters = dJson.data || [];
+    const rawCounters = dJson.data || [];
 
-    // --- 4. SUPABASE DATA OPHALEN (Nu met visits!) ---
+    // --- 3.5 AGGREGATIE FIX (HIER ZIT DE OPLOSSING) ---
+    // We voegen dubbele rijen (door race conditions) hier samen tot 1 unieke rij per dag/offer/sub
+    const aggregatedCounters = {};
+
+    for (const row of rawCounters) {
+        // Maak een unieke sleutel
+        const key = `${row.date}_${row.offer_id}_${row.sub_id || 'null'}_${row.rule_id || 'null'}_${row.affiliate_id}`;
+        
+        if (!aggregatedCounters[key]) {
+            // Nieuwe entry
+            aggregatedCounters[key] = { ...row };
+            // Zeker weten dat het getallen zijn
+            aggregatedCounters[key].total_leads = Number(row.total_leads || 0);
+            aggregatedCounters[key].accepted_leads = Number(row.accepted_leads || 0);
+        } else {
+            // Dubbel! Tel op bij bestaande
+            aggregatedCounters[key].total_leads += Number(row.total_leads || 0);
+            aggregatedCounters[key].accepted_leads += Number(row.accepted_leads || 0);
+            // (Optioneel: update ID naar de nieuwste, boeit niet veel voor weergave)
+        }
+    }
+    // Maak er weer een lijst van
+    const counters = Object.values(aggregatedCounters);
+
+
+    // --- 4. SUPABASE DATA OPHALEN ---
     let query = supabase
       .from('offer_performance_v2')
-      .select('offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, day, visits'); // <--- Visits toegevoegd
+      .select('offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, day, visits'); 
     
     if (date_from) query = query.gte('day', date_from);
     if (date_to)   query = query.lte('day', date_to);
@@ -95,13 +120,18 @@ export default async function handler(req, res) {
         m.day === c.date
       );
 
+      // FIX: Forceer alles naar Number() om 'plakken' van tekst te voorkomen
+      const rev = match ? Number(match.omzet_totaal || 0) : 0;
+      const cst = match ? Number(match.affise_cost || 0)  : 0;
+      const prf = match ? Number(match.profit || 0)       : 0;
+
       return {
         ...c,
-        actual_margin: match ? (match.margin_pct * 100) : null,
-        revenue: match ? (match.omzet_totaal || 0) : 0,
-        cost:    match ? (match.affise_cost || 0)  : 0,
-        profit:  match ? (match.profit || 0)       : 0,
-        visits:  match ? (match.visits || 0)       : 0 // <--- Visits doorgeven
+        actual_margin: match ? (Number(match.margin_pct) * 100) : null,
+        revenue: rev,
+        cost:    cst,
+        profit:  prf,
+        visits:  match ? Number(match.visits || 0) : 0 
       };
     });
 
