@@ -189,11 +189,11 @@
     }
 
 // --- MODULE: SNELLE RENDERING ---
+// Zoek de renderGroup functie in counters-ui.js en vervang deze:
+
 function renderGroup(mode, key, items){
   const rows = aggregateRows(items);
   let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
-  
-  // Bereken totalen in één loop
   rows.forEach(r => { 
       t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue;
       t_prof += r.profit; t_visits += r.visits; t_cost += r.cost;
@@ -202,7 +202,6 @@ function renderGroup(mode, key, items){
   const el = document.createElement('div');
   el.className = 'group collapsed'; 
   
-  // Gebruik string-building voor de hele tabel in plaats van losse DOM-acties
   let tableHtml = `
     <div class="group-header" data-role="toggle">
       <span class="chev">▶</span>
@@ -219,15 +218,16 @@ function renderGroup(mode, key, items){
           <tr>
             <th>OFFER</th> <th>AFF</th> <th>SUB</th> <th>TOTAL</th> <th>ACC</th>
             <th>OMZET</th> <th>KOSTEN</th> <th>WINST</th> <th>ACC %</th>
-            <th>TARGET</th> <th>MARGE %</th> <th style="color:#2563eb">EPC</th>
+            <th>TARGET</th> <th>MARGE %</th> 
+            <th style="color:#2563eb">DOEL EPC</th> <th style="color:#2563eb">EPC</th>
           </tr>
         </thead>
         <tbody>`;
 
-  // Voeg alle rijen toe aan de string
   tableHtml += rows.map(r => {
     const rule = RULES_MAP?.[r.rule_id] || {};
     const target = rule.target_margin || 15;
+    const targetEpc = rule.min_cpc || 0; // De Doel EPC waarde
     const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
     const isDanger = (r.actual_margin !== null && r.actual_margin < target);
 
@@ -244,6 +244,7 @@ function renderGroup(mode, key, items){
         <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
         <td style="font-weight:600;color:#2563eb">${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
         <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
+        <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
         <td style="font-weight:600">${money(epc)}</td>
       </tr>`;
   }).join('');
@@ -258,7 +259,6 @@ function renderGroup(mode, key, items){
   });
   return el;
 }
-
     function renderGrandTotal(allRows){
       let total = 0, accepted = 0, rev = 0, prof = 0;
       allRows.forEach(it => { 
