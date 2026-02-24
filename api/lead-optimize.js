@@ -99,18 +99,25 @@ async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
 
 async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addTotal, addAccepted }) {
   try {
+    console.log("Poging tot loggen naar Supabase:", { date, offer_id, sub_id }); // Debug log
+    
     const { error } = await supabase.rpc('increment_counter', {
       p_day: date,
       p_offer: String(offer_id),
       p_sub: sub_id ? String(sub_id) : null,
       p_aff: String(affiliate_id),
       p_rule: rule_id ? String(rule_id) : null,
-      p_add_total: addTotal,
-      p_add_acc: addAccepted
+      p_add_total: parseInt(addTotal),
+      p_add_acc: parseInt(addAccepted)
     });
-    if (error) throw error;
+
+    if (error) {
+      console.error("❌ Supabase RPC Error:", error.message, error.details);
+    } else {
+      console.log("✅ Supabase counter succesvol bijgewerkt");
+    }
   } catch (e) {
-    console.error("❌ Supabase counter failed:", e.message);
+    console.error("❌ Kritieke fout in incCounters:", e.message);
   }
 }
 
