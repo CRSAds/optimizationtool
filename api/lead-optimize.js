@@ -1,4 +1,5 @@
 // --- MODULE 1: CONFIGURATIE & ENV ---
+import { createClient } from '@supabase/supabase-js'; // VOEG DIT TOE
 const DIRECTUS_URL        = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN      = process.env.DIRECTUS_TOKEN;
 const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
