@@ -6,6 +6,12 @@ const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
+// Initialiseer Supabase (VOEG DIT TOE)
+const supabase = createClient(
+  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 // --- MODULE 2: ROBUUSTE FETCH HELPERS (MET RETRY & TIMEOUT) ---
 const fetchWithTimeout = async (url, options, ms = 4000) => {
   const controller = new AbortController();
