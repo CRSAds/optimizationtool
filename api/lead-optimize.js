@@ -99,17 +99,19 @@ async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
 
 async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addTotal, addAccepted }) {
   try {
-    const cur = await getCounters({ date, affiliate_id, offer_id, sub_id, rule_id });
-    const payload = {
-      date, affiliate_id: String(affiliate_id), offer_id: String(offer_id),
-      sub_id: sub_id == null ? null : String(sub_id),
-      rule_id: rule_id == null ? null : String(rule_id),
-      total_leads: (cur.total || 0) + addTotal,
-      accepted_leads: (cur.accepted || 0) + addAccepted,
-    };
-    const path = cur.id ? `/items/Optimization_counters/${cur.id}` : '/items/Optimization_counters';
-    await dfetch(path, { method: cur.id ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
-  } catch (e) { console.error("Counter update failed", e); }
+    const { error } = await supabase.rpc('increment_counter', {
+      p_day: date,
+      p_offer: String(offer_id),
+      p_sub: sub_id ? String(sub_id) : null,
+      p_aff: String(affiliate_id),
+      p_rule: rule_id ? String(rule_id) : null,
+      p_add_total: addTotal,
+      p_add_acc: addAccepted
+    });
+    if (error) throw error;
+  } catch (e) {
+    console.error("❌ Supabase counter failed:", e.message);
+  }
 }
 
 // --- MODULE 5: MAIN REQUEST HANDLER ---
