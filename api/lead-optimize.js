@@ -1,13 +1,11 @@
-// /pages/api/lead-optimize.js
-
+// --- MODULE 1: CONFIGURATIE & ENV ---
 const DIRECTUS_URL        = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN      = process.env.DIRECTUS_TOKEN;
 const HASH_SECRET         = process.env.HASH_SECRET || 'change-me';
 const AFFISE_POSTBACK_URL = process.env.AFFISE_POSTBACK_URL || '';
 const COLLECTION          = process.env.DIRECTUS_COLLECTION || 'Optimization_rules';
 
-// --- HELPER: TIME-OUT FETCH ---
-// Kapt de verbinding hard af na 'ms' milliseconden
+// --- MODULE 2: ROBUUSTE FETCH HELPERS (MET RETRY & TIMEOUT) ---
 const fetchWithTimeout = async (url, options, ms = 4000) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
@@ -21,21 +19,13 @@ const fetchWithTimeout = async (url, options, ms = 4000) => {
   }
 };
 
-// --- HELPER: ROBUUSTE FETCH MET RETRY & TIMEOUT ---
 async function fetchWithRetry(url, options = {}, retries = 2, backoff = 300) {
   try {
-    // Timeout van 4s per request
     const res = await fetchWithTimeout(url, options, 4000);
-    
-    // Als server 5xx error geeft, proberen we het opnieuw.
-    if (!res.ok && res.status >= 500 && retries > 0) {
-        throw new Error(`Server error ${res.status}`);
-    }
+    if (!res.ok && res.status >= 500 && retries > 0) throw new Error(`Server error ${res.status}`);
     return res;
   } catch (err) {
     if (retries > 0) {
-      console.warn(`⚠️ Retrying ${url} (${retries} left): ${err.message}`);
-      // Wacht even (backoff) en probeer opnieuw
       await new Promise(r => setTimeout(r, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
@@ -43,328 +33,154 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 300) {
   }
 }
 
-// --- 1. CORS LOGICA ---
-function setCorsHeaders(req, res) {
-  const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',');
-  const origin = req.headers.origin;
-
-  if (origin && (allowedOrigins.includes('*') || allowedOrigins.includes(origin))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return true; 
-  }
-  return false; 
-}
-
 function dfetch(path, init = {}) {
-  if (!DIRECTUS_URL || !DIRECTUS_TOKEN) {
-    console.error("Missing Directus Env Vars");
-    // We rejecten niet hard, maar loggen
-    return Promise.reject(new Error("Configuration Error"));
-  }
   const url = `${DIRECTUS_URL}${path}`;
   const headers = {
     ...(init.headers || {}),
     Authorization: `Bearer ${DIRECTUS_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  // Ook Directus calls krijgen een timeout
   return fetchWithRetry(url, { ...init, headers, cache: 'no-store' }, 1);
 }
 
-function todayISO(){ return new Date().toISOString().slice(0,10); }
-
-async function hashToPercent(input){
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  const b   = new Uint8Array(buf);
-  const n   = ((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0;
-  return n % 100; // 0..99
-}
-
-/* =========================
-   BEST MATCH RULE LOOKUP
-   ========================= */
-
-async function fetchCandidateRules({ affiliate_id, offer_id, sub_id }) {
-  const p = new URLSearchParams();
-  p.append('fields', '*,date_created');
-  p.append('limit', '100'); 
-  p.append('sort[]', '-id'); 
-  p.append('filter[_and][0][active][_eq]', 'true');
-
-  if (offer_id) {
-    p.append('filter[_and][1][_or][0][offer_id][_eq]', String(offer_id));
-    p.append('filter[_and][1][_or][1][offer_id][_null]', 'true');
-  } else {
-    p.append('filter[_and][1][offer_id][_null]', 'true');
-  }
-
-  const r = await dfetch(`/items/${encodeURIComponent(COLLECTION)}?${p.toString()}`);
-  if (!r.ok) throw new Error(`Rules fetch failed ${r.status}`);
-  const j = await r.json();
-  return Array.isArray(j?.data) ? j.data : [];
-}
-
-function matchScore(rule, lead){
+// --- MODULE 3: RULE MATCHING ENGINE (STRICT PRIORITEIT) ---
+function matchScore(rule, lead) {
   const isWildcard = (val) => val === null || val === undefined || String(val).trim() === '';
-  const check = (ruleVal, leadVal) => {
-    if (isWildcard(ruleVal)) return true; 
-    return String(ruleVal) === String(leadVal ?? ''); 
-  };
+  
+  const okAff = isWildcard(rule.affiliate_id) || String(rule.affiliate_id) === String(lead.affiliate_id);
+  const okOff = isWildcard(rule.offer_id) || String(rule.offer_id) === String(lead.offer_id);
+  const okSub = isWildcard(rule.sub_id) || String(rule.sub_id) === String(lead.sub_id);
 
-  const okAff = check(rule.affiliate_id, lead.affiliate_id);
-  const okOff = check(rule.offer_id,     lead.offer_id);
-  const okSub = check(rule.sub_id,       lead.sub_id);
+  if (!okAff || !okOff || !okSub) return -1;
 
-  if(!okAff || !okOff || !okSub) return -1;
-
-  let s = 0;
-  if (!isWildcard(rule.affiliate_id)) s++;
-  if (!isWildcard(rule.offer_id))     s++;
-  if (!isWildcard(rule.sub_id))       s++;
-  return s;
+  let score = 0;
+  if (!isWildcard(rule.affiliate_id)) score += 1;
+  if (!isWildcard(rule.offer_id))     score += 1;
+  // Sub_id krijgt een veel hogere score zodat een sub-match ALTIJD wint van een algemene offer-match
+  if (!isWildcard(rule.sub_id))       score += 5; 
+  return score;
 }
 
-function selectBestRule(candidates, lead){
+function selectBestRule(candidates, lead) {
   let best = null;
-  for(const r of candidates){
+  for (const r of candidates) {
     const s = matchScore(r, lead);
-    if(s < 0) continue; 
+    if (s < 0) continue;
 
-    if(!best){ best = { r, s }; continue; }
-    if(s > best.s){ best = { r, s }; continue; } 
-
-    if(s === best.s){
+    if (!best || s > best.s) {
+      best = { r, s };
+    } else if (s === best.s) {
+      // Bij gelijke score wint de nieuwste regel
       const da = new Date(r.date_created || 0).getTime();
       const db = new Date(best.r.date_created || 0).getTime();
-      if(da > db){ best = { r, s }; continue; }
-      if(da === db && String(r.id).localeCompare(String(best.r.id)) < 0){
-        best = { r, s }; continue;
-      }
+      if (da > db) best = { r, s };
     }
   }
   return best ? { rule: best.r, level: `score-${best.s}` } : { rule: null, level: null };
 }
 
-async function findRule(lead){
-  try {
-    const candidates = await fetchCandidateRules(lead);
-    return selectBestRule(candidates, lead);
-  } catch (e) {
-    console.error("❌ Rule lookup failed:", e);
-    // Bij falen: geen regel -> reject (veilig)
-    return { rule: null, level: 'error' };
-  }
-}
-
-/* ===== Counters ===== */
-
+// --- MODULE 4: COUNTERS & POSTBACK LOGICA ---
 async function getCounters({ date, affiliate_id, offer_id, sub_id, rule_id }) {
-  try {
-    const filter = {
-      _and: [
-        { date: { _eq: date } },
-        { affiliate_id: { _eq: String(affiliate_id) } },
-        { offer_id:     { _eq: String(offer_id) } },
-        sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
-        rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } },
-      ],
-    };
-    const qs = new URLSearchParams({
-      fields: 'id,total_leads,accepted_leads',
-      filter: JSON.stringify(filter),
-      limit: '1',
-    });
-    const res = await dfetch(`/items/Optimization_counters?${qs.toString()}`);
-    if (!res.ok) return { id: null, total: 0, accepted: 0 };
-    const json = await res.json();
-    const row = json?.data?.[0];
-    return { id: row?.id, total: row?.total_leads ?? 0, accepted: row?.accepted_leads ?? 0 };
-  } catch (e) {
-    console.error("Counter fetch failed", e);
-    return { id: null, total: 0, accepted: 0 };
-  }
+  const filter = {
+    _and: [
+      { date: { _eq: date } },
+      { affiliate_id: { _eq: String(affiliate_id) } },
+      { offer_id: { _eq: String(offer_id) } },
+      sub_id == null ? { sub_id: { _null: true } } : { sub_id: { _eq: String(sub_id) } },
+      rule_id == null ? { rule_id: { _null: true } } : { rule_id: { _eq: String(rule_id) } },
+    ],
+  };
+  const qs = new URLSearchParams({ fields: 'id,total_leads,accepted_leads', filter: JSON.stringify(filter), limit: '1' });
+  const res = await dfetch(`/items/Optimization_counters?${qs}`);
+  const json = await res.json();
+  const row = json?.data?.[0];
+  return { id: row?.id, total: row?.total_leads ?? 0, accepted: row?.accepted_leads ?? 0 };
 }
 
 async function incCounters({ date, affiliate_id, offer_id, sub_id, rule_id, addTotal, addAccepted }) {
   try {
     const cur = await getCounters({ date, affiliate_id, offer_id, sub_id, rule_id });
-    if (!cur.id) {
-      await dfetch('/items/Optimization_counters', {
-        method: 'POST',
-        body: JSON.stringify({
-          date,
-          affiliate_id: String(affiliate_id),
-          offer_id: String(offer_id),
-          sub_id: sub_id == null ? null : String(sub_id),
-          rule_id: rule_id == null ? null : String(rule_id),
-          total_leads: addTotal,
-          accepted_leads: addAccepted,
-        }),
-      });
-    } else {
-      await dfetch(`/items/Optimization_counters/${cur.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          total_leads: cur.total + addTotal,
-          accepted_leads: cur.accepted + addAccepted,
-        }),
-      });
-    }
-  } catch (e) {
-    console.error("❌ Failed to update counters (non-fatal)", e);
-  }
+    const payload = {
+      date, affiliate_id: String(affiliate_id), offer_id: String(offer_id),
+      sub_id: sub_id == null ? null : String(sub_id),
+      rule_id: rule_id == null ? null : String(rule_id),
+      total_leads: (cur.total || 0) + addTotal,
+      accepted_leads: (cur.accepted || 0) + addAccepted,
+    };
+    const path = cur.id ? `/items/Optimization_counters/${cur.id}` : '/items/Optimization_counters';
+    await dfetch(path, { method: cur.id ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+  } catch (e) { console.error("Counter update failed", e); }
 }
 
-// RETRY LOGICA
-async function postbackToAffise(clickid) {
-  if (!AFFISE_POSTBACK_URL) {
-    console.error("❌ AFFISE_POSTBACK_URL missing");
-    return false;
-  }
-  if (!clickid) throw new Error('clickid missing');
-  
-  const url = new URL(AFFISE_POSTBACK_URL);
-  url.searchParams.set('clickid', String(clickid));
-  
-  // Retry 2x en strikte timeout
-  const r = await fetchWithRetry(url.toString(), { method: 'GET' }, 2);
-  
-  if (!r.ok) {
-     const txt = await r.text();
-     throw new Error(`Affise HTTP ${r.status}: ${txt}`);
-  }
-  
-  return true;
-}
-
-/* ===== Handler ===== */
-
+// --- MODULE 5: MAIN REQUEST HANDLER ---
 export default async function handler(req, res) {
-  if (setCorsHeaders(req, res)) return;
-
-  if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'Method not allowed' });
+  // CORS & Method check
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
   try {
     const p = req.body || {};
     const lead = {
-      lead_id     : String(p.lead_id || p.id || ''),
+      lead_id: String(p.lead_id || p.id || ''),
       affiliate_id: String(p.affiliate_id || p.aff_id || ''),
-      offer_id    : String(p.offer_id || p.offer || ''),
-      sub_id      : (p.sub_id === undefined || p.sub_id === null || p.sub_id === '') ? null : String(p.sub_id),
-      clickid     : p.clickid || p.click_id || p.transaction_id || '',
+      offer_id: String(p.offer_id || p.offer || ''),
+      sub_id: (p.sub_id === undefined || p.sub_id === null || p.sub_id === '') ? null : String(p.sub_id),
+      clickid: p.clickid || p.click_id || p.transaction_id || '',
     };
-    
-    if (!lead.lead_id || !lead.affiliate_id || !lead.offer_id) {
-      return res.status(200).json({ ok:false, decision: 'reject', error:'Missing lead_id data' });
-    }
+    const today = new Date().toISOString().slice(0, 10);
 
-    // 1) Beste regel zoeken
-    const { rule, level } = await findRule(lead);
-    
-    // Geen regel? Rejecten
+    // 1. Zoek Beste Regel
+    const qs = new URLSearchParams({ fields: '*,date_created', filter: JSON.stringify({ active: { _eq: true }, offer_id: { _eq: lead.offer_id } }) });
+    const rData = await dfetch(`/items/${COLLECTION}?${qs}`);
+    const { data: candidates } = await rData.json();
+    const { rule, level } = selectBestRule(candidates || [], lead);
+
     if (!rule) {
-       // Fire and forget counter
-       incCounters({
-          date: todayISO(),
-          affiliate_id: lead.affiliate_id,
-          offer_id: lead.offer_id,
-          sub_id: lead.sub_id,
-          rule_id: null, 
-          addTotal: 1,
-          addAccepted: 0
-       }).catch(e => console.error(e));
-
-       return res.status(200).json({ ok:true, decision:'reject', reason:'no-rule' });
+      incCounters({ date: today, ...lead, rule_id: null, addTotal: 1, addAccepted: 0 });
+      return res.status(200).json({ ok: true, decision: 'reject', reason: 'no-rule' });
     }
 
-    // 2) Cap per dag
-    if (rule.cap_per_day && Number(rule.cap_per_day) > 0) {
-      const { accepted } = await getCounters({
-        date: todayISO(),
-        affiliate_id: lead.affiliate_id,
-        offer_id: lead.offer_id,
-        sub_id: lead.sub_id,
-        rule_id: rule.id,
-      });
-      if (accepted >= Number(rule.cap_per_day)) {
-        incCounters({
-          date: todayISO(),
-          affiliate_id: lead.affiliate_id,
-          offer_id: lead.offer_id,
-          sub_id: lead.sub_id,
-          rule_id: rule.id,
-          addTotal: 1,
-          addAccepted: 0
-        }).catch(e => console.error(e));
-
-        return res.status(200).json({
-          ok:true, decision:'reject', reason:'daily-cap', rule_level: level
-        });
+    // 2. Cap Check
+    if (rule.cap_per_day > 0) {
+      const { accepted } = await getCounters({ date: today, ...lead, rule_id: rule.id });
+      if (accepted >= rule.cap_per_day) {
+        incCounters({ date: today, ...lead, rule_id: rule.id, addTotal: 1, addAccepted: 0 });
+        return res.json({ ok: true, decision: 'reject', reason: 'daily-cap' });
       }
     }
 
-    // 3) % beslissing
-    const score = await hashToPercent(
-      `${lead.lead_id}:${lead.affiliate_id}:${lead.offer_id}:${lead.sub_id ?? 'null'}:${HASH_SECRET}`
-    );
-    const ruleSaysAccept = score < Number(rule.percent_accept || 0);
+    // 3. Hash Beslissing
+    const input = `${lead.lead_id}:${lead.affiliate_id}:${lead.offer_id}:${lead.sub_id ?? 'null'}:${HASH_SECRET}`;
+    const data = new TextEncoder().encode(input);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    const score = (new Uint8Array(buf)[0] << 24 | new Uint8Array(buf)[1] << 16 | new Uint8Array(buf)[2] << 8 | new Uint8Array(buf)[3]) >>> 0;
+    const ruleSaysAccept = (score % 100) < Number(rule.percent_accept || 0);
 
-    // 4) Postback uitvoeren
-    let postbackSuccess = false;
-    let postbackError = null;
-
-    if (ruleSaysAccept) {
+    // 4. Postback & Response
+    let success = false;
+    if (ruleSaysAccept && lead.clickid) {
       try {
-        await postbackToAffise(lead.clickid);
-        postbackSuccess = true;
-      } catch (e) {
-        console.error(`POSTBACK FAILED lead=${lead.lead_id}`, e);
-        postbackError = String(e);
-        postbackSuccess = false;
-      }
+        const url = new URL(AFFISE_POSTBACK_URL);
+        url.searchParams.set('clickid', String(lead.clickid));
+        const pb = await fetchWithRetry(url.toString(), { method: 'GET' }, 2);
+        if (pb.ok) success = true;
+      } catch (e) { console.error("Postback failed", e); }
     }
 
-    // 5) Database Counters Bijwerken (Fire and Forget)
-    incCounters({
-      date: todayISO(),
-      affiliate_id: lead.affiliate_id,
-      offer_id: lead.offer_id,
-      sub_id: lead.sub_id,
-      rule_id: rule.id,
-      addTotal: 1,
-      addAccepted: postbackSuccess ? 1 : 0, 
-    }).catch(err => console.error("Counter update failed in background", err));
+    incCounters({ date: today, ...lead, rule_id: rule.id, addTotal: 1, addAccepted: success ? 1 : 0 });
 
-    // 6) Response naar gebruiker
-    const responseBody = {
+    return res.status(200).json({
       ok: true,
-      decision: postbackSuccess ? 'accept' : 'reject',
-      reason: ruleSaysAccept ? (postbackSuccess ? 'rules' : 'postback-failed') : 'rule-percentage',
-      forwarded: postbackSuccess,
-      rule: { id: rule.id, percent: rule.percent_accept },
-      error: postbackError
-    };
-
-    return res.status(200).json(responseBody);
+      decision: success ? 'accept' : 'reject',
+      reason: ruleSaysAccept ? (success ? 'rules' : 'postback-failed') : 'rule-percentage',
+      rule: { id: rule.id, percent: rule.percent_accept }
+    });
 
   } catch (e) {
-    // 🔥 CRASH NOOIT: Stuur altijd 200 OK naar Databowl
     console.error("CRITICAL ERROR:", e);
-    return res.status(200).json({ 
-        ok: false, 
-        decision: 'reject', 
-        error: 'Internal Server Error (Handled)', 
-        details: String(e) 
-    });
+    return res.status(200).json({ ok: false, decision: 'reject', error: String(e) });
   }
 }
