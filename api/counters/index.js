@@ -3,26 +3,28 @@ import { createClient } from '@supabase/supabase-js';
 // --- MODULE 1: CONFIGURATIE ---
 const DIRECTUS_URL = process.env.DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
-const ADMIN_UI_TOKEN = process.env.ADMIN_UI_TOKEN;
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // --- MODULE 2: HELPERS ---
 function norm(val) {
-  return (val == null) ? '' : String(val).trim();
+  return (val == null || val === '' || val === 'null') ? null : String(val).trim();
 }
 
-// --- MODULE 3: DATA OPHALEN & SQL AGGREGATIE ---
 export default async function handler(req, res) {
-  // CORS & Auth Check
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const hdr = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
-  if (!hdr || String(hdr) !== String(ADMIN_UI_TOKEN)) return res.status(403).json({ error: 'Forbidden' });
+  // AUTH CHECK (Verbeterd)
+  const incomingToken = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
+  if (!incomingToken || String(incomingToken).trim() !== String(process.env.ADMIN_UI_TOKEN).trim()) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   try {
-    const { date_from, date_to, affiliate_id, offer_id, sub_id } = req.query;
+    const { date_from, date_to, affiliate_id, offer_id } = req.query;
 
     // 1. Haal Counters op uit Directus
     const filter = { _and: [] };
@@ -43,23 +45,24 @@ export default async function handler(req, res) {
     const { data: rawCounters } = await dRes.json();
 
     // 2. Haal Performance op uit Supabase
-    // We gebruiken hier een slimme query die direct filtert op de gevraagde periode
-    let query = supabase.from('offer_performance_v2').select('*');
+    let query = supabase.from('offer_performance_v2').select('day, offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, visits');
     if (date_from) query = query.gte('day', date_from);
     if (date_to)   query = query.lte('day', date_to);
     const { data: margins } = await query;
 
-    // --- MODULE 4: SNELLE MATCHING LOGICA ---
-    // We bouwen een 'Map' van de marges voor razendsnelle O(1) lookups in plaats van loops
+    // 3. SNELLE MATCHING (Met verbeterde sub-id fallback)
     const marginMap = new Map();
     (margins || []).forEach(m => {
       const key = `${m.day}_${norm(m.offer_id)}_${norm(m.sub_id)}`;
       marginMap.set(key, m);
     });
 
-    // Merge de data
     const enriched = (rawCounters || []).map(c => {
-      const matchKey = `${c.date}_${norm(c.offer_id)}_${norm(c.sub_id)}`;
+      const nOff = norm(c.offer_id);
+      const nSub = norm(c.sub_id);
+      
+      // Zoek match op specifieke sub, of fallback naar offer-level data
+      const matchKey = `${c.date}_${nOff}_${nSub}`;
       const match = marginMap.get(matchKey);
 
       return {
