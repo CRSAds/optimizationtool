@@ -188,96 +188,76 @@
       return [...map.values()];
     }
 
-    function renderGroup(mode, key, items){
-      const rows = aggregateRows(items);
-      let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
-      rows.forEach(r => { 
-          t_tot += r.total; 
-          t_acc += r.accepted; 
-          t_rev += r.revenue;
-          t_prof += r.profit;
-          t_visits += r.visits;
-          t_cost += r.cost;
-      });
+// --- MODULE: SNELLE RENDERING ---
+function renderGroup(mode, key, items){
+  const rows = aggregateRows(items);
+  let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
+  
+  // Bereken totalen in één loop
+  rows.forEach(r => { 
+      t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue;
+      t_prof += r.profit; t_visits += r.visits; t_cost += r.cost;
+  });
 
-      const el = document.createElement('div');
-      el.className = 'group collapsed'; 
-      el.innerHTML = `
-        <div class="group-header" data-role="toggle">
-          <span class="chev">▶</span>
-          <span><b>${key}</b></span>
-          <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
-             <span>Rev: <b>${money(t_rev)}</b></span>
-             <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
-             <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
-          </div>
-        </div>
-        <div class="group-body">
-          <table class="rules">
-             <colgroup>
-               <col style="width:70px">  <col style="width:70px">  <col style="width:70px">  <col style="width:50px">  <col style="width:50px">  <col style="width:70px">  <col style="width:70px">  <col style="width:70px">  <col style="width:60px">  <col style="width:60px">  <col style="width:50px">  <col style="width:60px">  <col style="width:60px">  <col style="width:60px">  </colgroup>
-            <thead>
-              <tr>
-                <th>OFFER</th> <th>AFF</th> <th>SUB</th>
-                <th>TOTAL</th> <th>ACC</th>
-                <th>OMZET</th> <th>KOSTEN</th> <th>WINST</th>
-                <th>ACC RULE</th> <th>ACC %</th>
-                <th>TARGET</th> <th>MARGE %</th>
-                <th style="color:#2563eb">DOEL EPC</th> <th style="color:#2563eb">EPC</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(r => {
-                const rule = RULES_MAP?.[r.rule_id] || {};
-                const target = rule.target_margin || 15;
-                const actual = r.actual_margin;
-                
-                // EPC Berekening
-                const targetEpc = rule.min_cpc || 0;
-                const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
-                
-                const isDanger = (actual !== null && actual < target);
-                const marginBadge = actual !== null 
-                  ? `<span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${actual.toFixed(1)}%</span>`
-                  : '—';
-                
-                const autoIcon = rule.auto_pilot ? '🤖 ' : '';
+  const el = document.createElement('div');
+  el.className = 'group collapsed'; 
+  
+  // Gebruik string-building voor de hele tabel in plaats van losse DOM-acties
+  let tableHtml = `
+    <div class="group-header" data-role="toggle">
+      <span class="chev">▶</span>
+      <span><b>${key}</b></span>
+      <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
+         <span>Rev: <b>${money(t_rev)}</b></span>
+         <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
+         <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
+      </div>
+    </div>
+    <div class="group-body">
+      <table class="rules">
+        <thead>
+          <tr>
+            <th>OFFER</th> <th>AFF</th> <th>SUB</th> <th>TOTAL</th> <th>ACC</th>
+            <th>OMZET</th> <th>KOSTEN</th> <th>WINST</th> <th>ACC %</th>
+            <th>TARGET</th> <th>MARGE %</th> <th style="color:#2563eb">EPC</th>
+          </tr>
+        </thead>
+        <tbody>`;
 
-                return `
-                  <tr>
-                    <td>${escapeHtml(r.offer_id)}</td>
-                    <td>${escapeHtml(r.affiliate_id)}</td>
-                    <td>${escapeHtml(r.sub_id)}</td>
-                    
-                    <td>${fmt(r.total)}</td>
-                    <td>${fmt(r.accepted)}</td>
-                    
-                    <td>${money(r.revenue)}</td>
-                    <td style="color:#64748b">${money(r.cost)}</td>
-                    <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    
-                    <td style="color:#64748b">${rule.percent_accept ?? '—'}%</td>
-                    <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
-                    
-                    <td style="font-weight:600;color:#2563eb">${autoIcon}${target}%</td>
-                    <td>${marginBadge}</td>
-                    
-                    <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
-                    <td style="font-weight:600">${money(epc)}</td>
-                  </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
+  // Voeg alle rijen toe aan de string
+  tableHtml += rows.map(r => {
+    const rule = RULES_MAP?.[r.rule_id] || {};
+    const target = rule.target_margin || 15;
+    const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
+    const isDanger = (r.actual_margin !== null && r.actual_margin < target);
 
-      el.querySelector('[data-role=toggle]').addEventListener('click', () => {
-        el.classList.toggle('collapsed');
-        const chev = el.querySelector('.chev');
-        chev.style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
-      });
-      return el;
-    }
+    return `
+      <tr>
+        <td>${escapeHtml(r.offer_id)}</td>
+        <td>${escapeHtml(r.affiliate_id)}</td>
+        <td>${escapeHtml(r.sub_id)}</td>
+        <td>${fmt(r.total)}</td>
+        <td>${fmt(r.accepted)}</td>
+        <td>${money(r.revenue)}</td>
+        <td style="color:#64748b">${money(r.cost)}</td>
+        <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
+        <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
+        <td style="font-weight:600;color:#2563eb">${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
+        <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
+        <td style="font-weight:600">${money(epc)}</td>
+      </tr>`;
+  }).join('');
+
+  tableHtml += `</tbody></table></div>`;
+  el.innerHTML = tableHtml;
+
+  el.querySelector('[data-role=toggle]').addEventListener('click', () => {
+    el.classList.toggle('collapsed');
+    const chev = el.querySelector('.chev');
+    chev.style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
+  });
+  return el;
+}
 
     function renderGrandTotal(allRows){
       let total = 0, accepted = 0, rev = 0, prof = 0;
