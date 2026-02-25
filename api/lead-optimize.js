@@ -28,7 +28,7 @@ const fetchWithTimeout = async (url, options, ms = 4000) => {
 
 async function fetchWithRetry(url, options = {}, retries = 2, backoff = 300) {
   try {
-    const res = await fetchWithTimeout(url, options, 4000);
+    const res = await fetchWithTimeout(url, options, 8000);
     if (!res.ok && res.status >= 500 && retries > 0) throw new Error(`Server error ${res.status}`);
     return res;
   } catch (err) {
