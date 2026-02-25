@@ -34,7 +34,7 @@ function cleanString(str) {
 }
 
 // --- NIEUWE SYNC FUNCTIE (Voor de structurele oplossing) ---
-async function syncCountersToSupabase(date) {
+export async function syncCountersToSupabase(date) {
   const qs = new URLSearchParams({
     filter: JSON.stringify({ date: { _eq: date } }),
     limit: '-1'
