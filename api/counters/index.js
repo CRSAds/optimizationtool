@@ -2,10 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-function norm(val) {
-  return (val == null || val === '' || val === 'null') ? null : String(val).trim();
-}
-
 export default async function handler(req, res) {
   // 1. CORS LOGICA
   const origin = req.headers.origin;
@@ -24,45 +20,52 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { date_from, date_to, offer_id, sub_id, affiliate_id } = req.query;
+    const { date_from, date_to, offer_id, affiliate_id } = req.query;
 
-    // 3. Queries voorbereiden
-    // We beperken de velden om de view-verwerking te ontlasten
-    let cQuery = supabase.from('optimization_counters').select('day, offer_id, sub_id, affiliate_id, rule_id, total_leads, accepted_leads').limit(5000);
-    let pQuery = supabase.from('offer_performance_v2').select('day, offer_id, sub_id, margin_pct, omzet_totaal, affise_cost, profit, visits').limit(5000);
+    // 3. Haal alles in één keer uit de geoptimaliseerde view
+    let query = supabase
+      .from('offer_performance_v2')
+      .select(`
+        day, 
+        offer_id, 
+        sub_id, 
+        affiliate_id,
+        tool_total_leads, 
+        tool_accepted_leads, 
+        margin_pct, 
+        omzet_totaal, 
+        affise_cost, 
+        profit, 
+        visits
+      `);
 
-    if (date_from) { cQuery = cQuery.gte('day', date_from); pQuery = pQuery.gte('day', date_from); }
-    if (date_to)   { cQuery = cQuery.lte('day', date_to);   pQuery = pQuery.lte('day', date_to); }
-    if (offer_id)  { cQuery = cQuery.eq('offer_id', offer_id); pQuery = pQuery.eq('offer_id', offer_id); }
-    if (sub_id && sub_id !== 'null') { cQuery = cQuery.eq('sub_id', sub_id); pQuery = pQuery.eq('sub_id', sub_id); }
-    if (affiliate_id) { cQuery = cQuery.eq('affiliate_id', affiliate_id); }
+    if (date_from) query = query.gte('day', date_from);
+    if (date_to)   query = query.lte('day', date_to);
+    if (offer_id)  query = query.eq('offer_id', offer_id);
+    if (affiliate_id) query = query.eq('affiliate_id', affiliate_id);
 
-    // 4. Uitvoeren
-    const [cRes, pRes] = await Promise.all([cQuery, pQuery]);
+    const { data, error } = await query.order('day', { ascending: false }).limit(5000);
 
-    if (cRes.error) throw cRes.error;
-    if (pRes.error) throw pRes.error;
+    if (error) throw error;
 
-    // 5. Mapping
-    const perfMap = new Map();
-    (pRes.data || []).forEach(p => {
-      perfMap.set(`${p.day}_${norm(p.offer_id)}_${norm(p.sub_id)}`, p);
-    });
-
-    const items = (cRes.data || []).map(c => {
-      const p = perfMap.get(`${c.day}_${norm(c.offer_id)}_${norm(c.sub_id)}`);
-      return {
-        date: c.day, offer_id: c.offer_id, sub_id: c.sub_id, affiliate_id: c.affiliate_id,
-        rule_id: c.rule_id, total_leads: c.total_leads, accepted_leads: c.accepted_leads,
-        actual_margin: p ? (Number(p.margin_pct) * 100) : null,
-        revenue: p ? Number(p.omzet_totaal || 0) : 0, cost: p ? Number(p.affise_cost || 0) : 0,
-        profit: p ? Number(p.profit || 0) : 0, visits: p ? Number(p.visits || 0) : 0
-      };
-    });
+    // 4. Map de data naar het formaat van de UI
+    const items = (data || []).map(row => ({
+      date: row.day,
+      offer_id: row.offer_id,
+      sub_id: row.sub_id,
+      affiliate_id: row.affiliate_id,
+      total_leads: row.tool_total_leads,
+      accepted_leads: row.tool_accepted_leads,
+      actual_margin: row.margin_pct ? (Number(row.margin_pct) * 100) : null,
+      revenue: Number(row.omzet_totaal || 0),
+      cost: Number(row.affise_cost || 0),
+      profit: Number(row.profit || 0),
+      visits: Number(row.visits || 0)
+    }));
 
     return res.status(200).json({ ok: true, items });
   } catch (e) {
     console.error("Dashboard API Error:", e);
-    return res.status(500).json({ error: e.message, code: e.code });
+    return res.status(500).json({ error: e.message });
   }
 }
