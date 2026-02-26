@@ -8,12 +8,13 @@
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
   let RULES_MAP = {};
+  // NIEUW: Houdt bij welke groepen (bijv. datums) zijn opengeklapt
+  let OPEN_GROUPS = new Set(); 
 
   function startApp() {
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // CSS voor visuele styling
     const style = document.createElement('style');
     style.innerHTML = `
       .rules thead th { 
@@ -31,6 +32,9 @@
       .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
       .badge-danger { background: #fee2e2; color: #991b1b; }
       .badge-ok { background: #dcfce7; color: #166534; }
+      /* CSS voor inklappen */
+      .group.collapsed .group-body { display: none; }
+      .group.collapsed .chev { transform: rotate(0deg) !important; }
     `;
     document.head.appendChild(style);
 
@@ -53,17 +57,13 @@
             <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:80px">
             <button id="c_run" class="rules-btn" type="button" style="margin-left:auto">Toon</button>
           </div>
-          
           <div class="rules-toolbar" style="border-bottom:1px solid #e2e8f0; background:#f8fafc; gap:8px; padding:6px 16px;">
              <button class="badge badge-auto" data-preset="today" style="border:none;cursor:pointer">Vandaag</button>
              <button class="badge badge-auto" data-preset="yesterday" style="border:none;cursor:pointer">Gisteren</button>
              <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
-
-          <div class="table-wrap" style="display:flex; flex-direction:column;">
-             <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
-          </div>
+          <div class="table-wrap"><div id="c_groups" style="padding-bottom:20px;"></div></div>
         </div>
       </div>
     `;
@@ -82,6 +82,7 @@
     selMode.value = localStorage.getItem('c_groupmode') || 'date';
     selMode.addEventListener('change', ()=> {
       localStorage.setItem('c_groupmode', selMode.value);
+      OPEN_GROUPS.clear(); // Reset open groepen bij wisselen mode
       renderAll();
     });
 
@@ -101,18 +102,9 @@
         const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         RULES_MAP = {};
-
         (j.items || []).forEach(it => {
-          const off = norm(it.offer_id);
-          const aff = norm(it.affiliate_id);
-          const sub = norm(it.sub_id);
-          const data = { 
-            auto_pilot: !!it.auto_pilot, 
-            target_margin: Number(it.target_margin || 15), 
-            min_cpc: Number(it.min_cpc || 0) 
-          };
-
-          // Hiërarchische opslag voor matching
+          const off = norm(it.offer_id), aff = norm(it.affiliate_id), sub = norm(it.sub_id);
+          const data = { auto_pilot: !!it.auto_pilot, target_margin: Number(it.target_margin || 15), min_cpc: Number(it.min_cpc || 0) };
           if (off && aff && sub) RULES_MAP[`${off}|${aff}|${sub}`] = data;
           if (off && sub)        RULES_MAP[`${off}||${sub}`] = data;
           if (off && aff)        RULES_MAP[`${off}|${aff}|`] = data;
@@ -123,20 +115,17 @@
 
     async function fetchData(){
       const host = mount$('#c_groups');
-      host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Data ophalen…</div>`;
+      host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
       try {
         await ensureRules(); 
         const q = new URLSearchParams({ 
-          date_from: mount$('#c_from').value, 
-          date_to: mount$('#c_to').value,
-          affiliate_id: mount$('#c_aff').value,
-          offer_id: mount$('#c_off').value,
-          sub_id: mount$('#c_sub').value
+          date_from: mount$('#c_from').value, date_to: mount$('#c_to').value,
+          affiliate_id: mount$('#c_aff').value, offer_id: mount$('#c_off').value, sub_id: mount$('#c_sub').value
         });
-
         const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         CACHE_DATA = j.items || [];
+        OPEN_GROUPS.clear(); // Start standaard ingeklapt
         renderAll();
       } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
     }
@@ -144,14 +133,12 @@
     function renderAll() {
       const host = mount$('#c_groups');
       if (!CACHE_DATA.length) { host.innerHTML = `<div style="padding:20px;text-align:center">Geen resultaten</div>`; return; }
-
       const mode = mount$('#c_groupmode').value;
       const grouped = {};
       CACHE_DATA.forEach(it => {
         const key = mode === 'date' ? it.date : (it[mode + '_id'] || '—');
         (grouped[key] ||= []).push(it);
       });
-
       host.innerHTML = '';
       Object.keys(grouped).sort((a,b)=> (mode==='date' ? b.localeCompare(a) : a.localeCompare(b))).forEach(k => {
         host.appendChild(renderGroup(mode, k, grouped[k]));
@@ -163,16 +150,8 @@
       const map = new Map();
       for(const it of items){
         const key = `${it.affiliate_id}|${it.offer_id}|${it.sub_id}`;
-        const acc = map.get(key) || { 
-          affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id,
-          total: 0, accepted: 0, actual_margin: it.actual_margin, revenue: 0, cost: 0, profit: 0, visits: 0
-        };
-        acc.total += Number(it.total_leads || 0);
-        acc.accepted += Number(it.accepted_leads || 0);
-        acc.revenue += Number(it.revenue || 0);
-        acc.cost    += Number(it.cost || 0);
-        acc.profit  += Number(it.profit || 0);
-        acc.visits  += Number(it.visits || 0);
+        const acc = map.get(key) || { affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, total: 0, accepted: 0, actual_margin: it.actual_margin, revenue: 0, cost: 0, profit: 0, visits: 0 };
+        acc.total += Number(it.total_leads || 0); acc.accepted += Number(it.accepted_leads || 0); acc.revenue += Number(it.revenue || 0); acc.cost += Number(it.cost || 0); acc.profit += Number(it.profit || 0); acc.visits += Number(it.visits || 0);
         map.set(key, acc);
       }
       return [...map.values()];
@@ -180,10 +159,8 @@
 
     function renderGroup(mode, key, items){
       let rows = aggregateRows(items);
-      
       rows.sort((a, b) => {
-        let valA = a[CURRENT_SORT.key];
-        let valB = b[CURRENT_SORT.key];
+        let valA = a[CURRENT_SORT.key], valB = b[CURRENT_SORT.key];
         if (typeof valA === 'string') return valA.localeCompare(valB) * CURRENT_SORT.dir;
         return (valA - valB) * CURRENT_SORT.dir;
       });
@@ -192,11 +169,13 @@
       rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue; t_prof += r.profit; t_cost += r.cost; });
 
       const el = document.createElement('div');
-      el.className = 'group'; 
+      // BEPAAL OF GROEP OPEN MOET ZIJN
+      const isOpen = OPEN_GROUPS.has(key);
+      el.className = `group ${isOpen ? '' : 'collapsed'}`; 
       
       el.innerHTML = `
-        <div class="group-header" data-role="toggle" style="cursor:pointer">
-          <span class="chev" style="transform:rotate(90deg)">▶</span>
+        <div class="group-header" data-role="toggle" style="cursor:pointer" data-key="${key}">
+          <span class="chev" style="transform:${isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
           <span><b>${key}</b></span>
           <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
              <span>Rev: <b>${money(t_rev)}</b></span>
@@ -225,32 +204,17 @@
             </thead>
             <tbody>
               ${rows.map(r => {
-                const off = norm(r.offer_id);
-                const aff = norm(r.affiliate_id);
-                const sub = norm(r.sub_id);
-
-                // Hiërarchische lookup
-                const rule = RULES_MAP[`${off}|${aff}|${sub}`] 
-                          || RULES_MAP[`${off}||${sub}`] 
-                          || RULES_MAP[`${off}|${aff}|`] 
-                          || RULES_MAP[off] 
-                          || {};
-                
+                const off = norm(r.offer_id), aff = norm(r.affiliate_id), sub = norm(r.sub_id);
+                const rule = RULES_MAP[`${off}|${aff}|${sub}`] || RULES_MAP[`${off}||${sub}`] || RULES_MAP[`${off}|${aff}|`] || RULES_MAP[off] || {};
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
                 const targetMarge = rule.target_margin || 15;
                 const isDanger = (r.actual_margin !== null && r.actual_margin < targetMarge);
-                const showBot = rule.auto_pilot ? '<span class="bot-icon" title="Auto Pilot Actief">🤖</span>' : '';
-                
+                const showBot = rule.auto_pilot ? '<span class="bot-icon">🤖</span>' : '';
                 return `
                   <tr>
-                    <td>${escapeHtml(r.offer_id)}</td>
-                    <td>${escapeHtml(r.affiliate_id)}</td>
-                    <td>${escapeHtml(r.sub_id)}</td>
-                    <td>${fmt(r.total)}</td>
-                    <td>${fmt(r.accepted)}</td>
-                    <td>${money(r.revenue)}</td>
-                    <td style="color:#64748b">${money(r.cost)}</td>
-                    <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
+                    <td>${escapeHtml(r.offer_id)}</td><td>${escapeHtml(r.affiliate_id)}</td><td>${escapeHtml(r.sub_id)}</td>
+                    <td>${fmt(r.total)}</td><td>${fmt(r.accepted)}</td><td>${money(r.revenue)}</td>
+                    <td style="color:#64748b">${money(r.cost)}</td><td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
                     <td style="font-weight:600;"><div style="display:flex; align-items:center;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</div></td>
                     <td style="font-weight:600;color:#2563eb">${targetMarge}%</td>
                     <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
@@ -263,12 +227,14 @@
         </div>
       `;
 
-      el.querySelector('[data-role=toggle]').addEventListener('click', () => {
-        const body = el.querySelector('.group-body');
+      el.querySelector('[data-role=toggle]').addEventListener('click', (e) => {
+        const key = e.currentTarget.dataset.key;
+        if (OPEN_GROUPS.has(key)) OPEN_GROUPS.delete(key);
+        else OPEN_GROUPS.add(key);
+        
+        el.classList.toggle('collapsed');
         const chev = el.querySelector('.chev');
-        const isCollapsed = body.style.display === 'none';
-        body.style.display = isCollapsed ? 'block' : 'none';
-        chev.style.transform = isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
+        chev.style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
       });
       return el;
     }
