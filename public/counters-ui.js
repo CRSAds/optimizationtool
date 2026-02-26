@@ -96,16 +96,26 @@
         const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         RULES_MAP = {};
+
+        // Hulpfunctie om ID's te normaliseren (verwijder null/undefined/0/leeg)
+        const norm = (val) => {
+          const s = String(val || '').trim().toLowerCase();
+          return (s === 'null' || s === '0' || s === '') ? '' : s;
+        };
+
         (j.items || []).forEach(it => {
-          // We mappen hier op een unieke key: offer|aff|sub
-          const key = `${it.offer_id}|${it.affiliate_id || ''}|${it.sub_id || ''}`;
+          // We maken een super-match sleutel: offer|aff|sub
+          // We zorgen dat 'null' of lege velden altijd consistent worden behandeld
+          const key = `${norm(it.offer_id)}|${norm(it.affiliate_id)}|${norm(it.sub_id)}`;
+          
           RULES_MAP[key] = { 
             auto_pilot: !!it.auto_pilot, 
             target_margin: Number(it.target_margin || 15), 
             min_cpc: Number(it.min_cpc || 0) 
           };
         });
-      } catch (e) { console.error(e); RULES_MAP = {}; }
+        console.log("Rules loaded and normalized:", Object.keys(RULES_MAP).length);
+      } catch (e) { console.error("Rules mapping error:", e); RULES_MAP = {}; }
     }
 
     async function fetchData(){
@@ -212,8 +222,12 @@
             </thead>
             <tbody>
               ${rows.map(r => {
-                // Koppeling zoeken in de rules map op basis van offer|aff|sub
-                const ruleKey = `${r.offer_id}|${r.affiliate_id || ''}|${r.sub_id || ''}`;
+              const norm = (val) => {
+              const s = String(val || '').trim().toLowerCase();
+              return (s === 'null' || s === '0' || s === '') ? '' : s;
+              };
+
+                const ruleKey = `${norm(r.offer_id)}|${norm(r.affiliate_id)}|${norm(r.sub_id)}`;
                 const rule = RULES_MAP?.[ruleKey] || {};
                 
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
