@@ -12,17 +12,21 @@
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // CSS Injectie voor de blauwe header en styling
+    // Verbeterde CSS voor blauwe headers en tabel-uitlijning
     const style = document.createElement('style');
     style.innerHTML = `
       .rules thead th { 
-        background-color: #f0f7ff !important; 
+        background-color: #eff6ff !important; 
         color: #1e40af !important; 
-        border-bottom: 2px solid #dbeafe !important;
-        padding: 10px 8px !important;
+        border-bottom: 2px solid #bfdbfe !important;
+        padding: 12px 8px !important;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
       }
       .rules tbody tr:hover { background-color: #f8fafc; }
-      .bot-icon { font-size: 14px; margin-right: 4px; }
+      .bot-icon { font-size: 14px; margin-right: 6px; filter: grayscale(0); }
+      .rules td { vertical-align: middle; }
     `;
     document.head.appendChild(style);
 
@@ -45,18 +49,13 @@
             <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:80px">
             <button id="c_run" class="rules-btn" type="button" style="margin-left:auto">Toon</button>
           </div>
-          
           <div class="rules-toolbar" style="border-bottom:1px solid #e2e8f0; background:#f8fafc; gap:8px; padding:6px 16px;">
              <button class="badge badge-auto" data-preset="today" style="border:none;cursor:pointer">Vandaag</button>
              <button class="badge badge-auto" data-preset="yesterday" style="border:none;cursor:pointer">Gisteren</button>
              <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
-
           <div class="table-wrap" style="display:flex; flex-direction:column;">
-             <div id="autopilot-logs-widget" style="display:none; background:#fff1f2; border-bottom:1px solid #fecaca; padding:15px; font-family:'Inter', sans-serif;">
-               <div id="autopilot-logs-list" style="display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; font-size:12px; color:#7f1d1d;"></div>
-             </div>
              <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
           </div>
         </div>
@@ -98,10 +97,11 @@
         const j = await r.json();
         RULES_MAP = {};
         (j.items || []).forEach(it => {
-          RULES_MAP[it.id] = { 
+          // We mappen hier op een unieke key: offer|aff|sub
+          const key = `${it.offer_id}|${it.affiliate_id || ''}|${it.sub_id || ''}`;
+          RULES_MAP[key] = { 
             auto_pilot: !!it.auto_pilot, 
             target_margin: Number(it.target_margin || 15), 
-            percent_accept: it.percent_accept, 
             min_cpc: Number(it.min_cpc || 0) 
           };
         });
@@ -149,9 +149,9 @@
     function aggregateRows(items){
       const map = new Map();
       for(const it of items){
-        const key = `${it.affiliate_id}|${it.offer_id}|${it.sub_id}|${it.rule_id}`;
+        const key = `${it.affiliate_id}|${it.offer_id}|${it.sub_id}`;
         const acc = map.get(key) || { 
-          affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id, rule_id: it.rule_id,
+          affiliate_id: it.affiliate_id, offer_id: it.offer_id, sub_id: it.sub_id,
           total: 0, accepted: 0, actual_margin: it.actual_margin, revenue: 0, cost: 0, profit: 0, visits: 0
         };
         acc.total += Number(it.total_leads || 0);
@@ -182,7 +182,7 @@
       el.className = 'group'; 
       
       el.innerHTML = `
-        <div class="group-header" data-role="toggle">
+        <div class="group-header" data-role="toggle" style="cursor:pointer">
           <span class="chev" style="transform:rotate(90deg)">▶</span>
           <span><b>${key}</b></span>
           <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
@@ -212,9 +212,13 @@
             </thead>
             <tbody>
               ${rows.map(r => {
-                const rule = RULES_MAP?.[r.rule_id] || {};
+                // Koppeling zoeken in de rules map op basis van offer|aff|sub
+                const ruleKey = `${r.offer_id}|${r.affiliate_id || ''}|${r.sub_id || ''}`;
+                const rule = RULES_MAP?.[ruleKey] || {};
+                
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
-                const isDanger = (r.actual_margin !== null && r.actual_margin < (rule.target_margin || 15));
+                const targetMarge = rule.target_margin || 15;
+                const isDanger = (r.actual_margin !== null && r.actual_margin < targetMarge);
                 const showBot = rule.auto_pilot ? '<span class="bot-icon" title="Auto Pilot Actief">🤖</span>' : '';
                 
                 return `
@@ -227,10 +231,10 @@
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
                     <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    <td style="font-weight:600; display:flex; align-items:center; border:none;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</td>
-                    <td style="font-weight:600;color:#2563eb">${rule.target_margin || 15}%</td>
+                    <td style="font-weight:600; display:flex; align-items:center; border:none; height:40px;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</td>
+                    <td style="font-weight:600;color:#2563eb">${targetMarge}%</td>
                     <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
-                    <td style="color:#64748b">${rule.min_cpc > 0 ? '€'+rule.min_cpc.toFixed(2) : '-'}</td>
+                    <td style="color:#1e40af; font-weight:600;">${rule.min_cpc > 0 ? money(rule.min_cpc) : '-'}</td>
                     <td style="font-weight:600">${money(epc)}</td>
                   </tr>`;
               }).join('')}
