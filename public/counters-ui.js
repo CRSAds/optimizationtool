@@ -5,11 +5,13 @@
   const API_COUNTERS = `${API_BASE}/counters`;
   const API_RULES    = `${API_BASE}/rules`; 
 
+  // Globale sorteerstaat
+  let CURRENT_SORT = { key: 'profit', dir: -1 }; 
+
   function startApp() {
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // DE RESULTATEN LAYOUT (Inclusief log widget)
     mount.innerHTML = `
       <div class="rules-wrap">
         <div class="rules-card">
@@ -38,7 +40,6 @@
           </div>
 
           <div class="table-wrap" style="display:flex; flex-direction:column;">
-             
              <div id="autopilot-logs-widget" style="display:none; background:#fff1f2; border-bottom:1px solid #fecaca; padding:15px; font-family:'Inter', sans-serif;">
                <div style="font-weight:700; font-size:13px; color:#991b1b; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
                  <span>🤖 Auto Pilot Acties (Laatste ingrepen)</span>
@@ -46,17 +47,14 @@
                <div id="autopilot-logs-list" style="display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; font-size:12px; color:#7f1d1d;">
                </div>
              </div>
-
              <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
           </div>
         </div>
       </div>
     `;
 
-    const $ = (s) => document.querySelector(s);
     const mount$ = (s) => mount.querySelector(s);
     
-    // Formatters
     const fmt = (n)=> new Intl.NumberFormat('nl-NL').format(n);
     const money = (n)=> new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n);
     const pct = (a,t)=> t>0 ? (100*a/t) : 0;
@@ -100,33 +98,21 @@
              percent_accept: it.percent_accept,
              min_cpc: Number(it.min_cpc || 0)
           };
-          
           if(it.pilot_log) {
-             logs.push({ 
-               id: it.id, 
-               offer: it.offer_id, 
-               sub: it.sub_id,
-               msg: it.pilot_log 
-             });
+             logs.push({ id: it.id, offer: it.offer_id, sub: it.sub_id, msg: it.pilot_log });
           }
         });
 
         const widget = document.getElementById('autopilot-logs-widget');
         const list = document.getElementById('autopilot-logs-list');
-        
         if (widget && list) {
           if (logs.length > 0) {
             widget.style.display = 'block';
-            list.innerHTML = logs.map(l => `
-              <div style="padding:4px 0; border-bottom:1px solid #fee2e2">
-                <b>Offer ${l.offer}</b> ${l.sub ? `(Sub ${l.sub})` : ''}: ${l.msg}
-              </div>
-            `).join('');
+            list.innerHTML = logs.map(l => `<div style="padding:4px 0; border-bottom:1px solid #fee2e2"><b>Offer ${l.offer}</b> ${l.sub ? `(Sub ${l.sub})` : ''}: ${l.msg}</div>`).join('');
           } else {
             widget.style.display = 'none';
           }
         }
-
       } catch (e) { console.error("Rules/Logs fetch error", e); RULES_MAP = {}; }
       return RULES_MAP;
     }
@@ -136,7 +122,6 @@
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
       try {
         await ensureRulesAndLogs(); 
-        
         const q = new URLSearchParams({ 
           date_from: mount$('#c_from').value, 
           date_to: mount$('#c_to').value,
@@ -147,7 +132,10 @@
 
         const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
-        const rows = j.items || [];
+        let rows = j.items || [];
+
+        // Filter rijen met 0 leads
+        rows = rows.filter(it => (it.total_leads || 0) > 0 || (it.accepted_leads || 0) > 0);
 
         if(!rows.length){ host.innerHTML = `<div style="padding:20px;text-align:center">Geen resultaten</div>`; return; }
 
@@ -162,9 +150,7 @@
         Object.keys(grouped).sort((a,b)=> (mode==='date' ? b.localeCompare(a) : a.localeCompare(b))).forEach(k => {
           host.appendChild(renderGroup(mode, k, grouped[k]));
         });
-        
         host.appendChild(renderGrandTotal(rows));
-        
       } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
     }
 
@@ -188,108 +174,120 @@
       return [...map.values()];
     }
 
-// --- MODULE: SNELLE RENDERING ---
-// Zoek de renderGroup functie in counters-ui.js en vervang deze:
+    function renderGroup(mode, key, items){
+      let rows = aggregateRows(items);
+      
+      // Sortering toepassen op de geaggregeerde rijen
+      rows.sort((a, b) => {
+        let valA = a[CURRENT_SORT.key];
+        let valB = b[CURRENT_SORT.key];
+        if (typeof valA === 'string') return valA.localeCompare(valB) * CURRENT_SORT.dir;
+        return (valA - valB) * CURRENT_SORT.dir;
+      });
 
-function renderGroup(mode, key, items){
-  const rows = aggregateRows(items);
-  let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
-  rows.forEach(r => { 
-      t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue;
-      t_prof += r.profit; t_visits += r.visits; t_cost += r.cost;
-  });
+      let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
+      rows.forEach(r => { 
+          t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue;
+          t_prof += r.profit; t_visits += r.visits; t_cost += r.cost;
+      });
 
-  const el = document.createElement('div');
-  el.className = 'group collapsed'; 
-  
-  let tableHtml = `
-    <div class="group-header" data-role="toggle">
-      <span class="chev">▶</span>
-      <span><b>${key}</b></span>
-      <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
-         <span>Rev: <b>${money(t_rev)}</b></span>
-         <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
-         <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
-      </div>
-    </div>
-    <div class="group-body">
-      <table class="rules">
-        <thead>
+      const el = document.createElement('div');
+      el.className = 'group collapsed'; 
+      
+      let tableHtml = `
+        <div class="group-header" data-role="toggle">
+          <span class="chev">▶</span>
+          <span><b>${key}</b></span>
+          <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
+             <span>Rev: <b>${money(t_rev)}</b></span>
+             <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
+             <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
+          </div>
+        </div>
+        <div class="group-body">
+          <table class="rules">
+            <thead>
+              <tr>
+                <th style="cursor:pointer" data-sort="offer_id">OFFER ↕</th>
+                <th style="cursor:pointer" data-sort="affiliate_id">AFF ↕</th>
+                <th style="cursor:pointer" data-sort="sub_id">SUB ↕</th>
+                <th style="cursor:pointer" data-sort="total">TOTAL ↕</th>
+                <th style="cursor:pointer" data-sort="accepted">ACC ↕</th>
+                <th style="cursor:pointer" data-sort="revenue">OMZET ↕</th>
+                <th style="cursor:pointer" data-sort="cost">KOSTEN ↕</th>
+                <th style="cursor:pointer" data-sort="profit">WINST ↕</th>
+                <th>ACC %</th>
+                <th>TARGET</th>
+                <th style="cursor:pointer" data-sort="actual_margin">MARGE % ↕</th> 
+                <th>DOEL EPC</th>
+                <th>EPC</th>
+              </tr>
+            </thead>
+            <tbody>`;
+
+      tableHtml += rows.map(r => {
+        const rule = RULES_MAP?.[r.rule_id] || {};
+        const target = rule.target_margin || 15;
+        const targetEpc = rule.min_cpc || 0;
+        const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
+        const isDanger = (r.actual_margin !== null && r.actual_margin < target);
+
+        return `
           <tr>
-            <th>OFFER</th> <th>AFF</th> <th>SUB</th> <th>TOTAL</th> <th>ACC</th>
-            <th>OMZET</th> <th>KOSTEN</th> <th>WINST</th> <th>ACC %</th>
-            <th>TARGET</th> <th>MARGE %</th> 
-            <th style="color:#2563eb">DOEL EPC</th> <th style="color:#2563eb">EPC</th>
-          </tr>
-        </thead>
-        <tbody>`;
+            <td>${escapeHtml(r.offer_id)}</td>
+            <td>${escapeHtml(r.affiliate_id)}</td>
+            <td>${escapeHtml(r.sub_id)}</td>
+            <td>${fmt(r.total)}</td>
+            <td>${fmt(r.accepted)}</td>
+            <td>${money(r.revenue)}</td>
+            <td style="color:#64748b">${money(r.cost)}</td>
+            <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
+            <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
+            <td style="font-weight:600;color:#2563eb">${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
+            <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
+            <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
+            <td style="font-weight:600">${money(epc)}</td>
+          </tr>`;
+      }).join('');
 
-  tableHtml += rows.map(r => {
-    const rule = RULES_MAP?.[r.rule_id] || {};
-    const target = rule.target_margin || 15;
-    const targetEpc = rule.min_cpc || 0; // De Doel EPC waarde
-    const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
-    const isDanger = (r.actual_margin !== null && r.actual_margin < target);
+      tableHtml += `</tbody></table></div>`;
+      el.innerHTML = tableHtml;
 
-    return `
-      <tr>
-        <td>${escapeHtml(r.offer_id)}</td>
-        <td>${escapeHtml(r.affiliate_id)}</td>
-        <td>${escapeHtml(r.sub_id)}</td>
-        <td>${fmt(r.total)}</td>
-        <td>${fmt(r.accepted)}</td>
-        <td>${money(r.revenue)}</td>
-        <td style="color:#64748b">${money(r.cost)}</td>
-        <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-        <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
-        <td style="font-weight:600;color:#2563eb">${rule.auto_pilot ? '🤖 ' : ''}${target}%</td>
-        <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
-        <td style="color:#64748b">${targetEpc > 0 ? '€'+targetEpc.toFixed(2) : '-'}</td>
-        <td style="font-weight:600">${money(epc)}</td>
-      </tr>`;
-  }).join('');
+      el.querySelector('[data-role=toggle]').addEventListener('click', () => {
+        el.classList.toggle('collapsed');
+        const chev = el.querySelector('.chev');
+        chev.style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
+      });
+      return el;
+    }
 
-  tableHtml += `</tbody></table></div>`;
-  el.innerHTML = tableHtml;
-
-  el.querySelector('[data-role=toggle]').addEventListener('click', () => {
-    el.classList.toggle('collapsed');
-    const chev = el.querySelector('.chev');
-    chev.style.transform = el.classList.contains('collapsed') ? 'rotate(0deg)' : 'rotate(90deg)';
-  });
-  return el;
-}
     function renderGrandTotal(allRows){
       let total = 0, accepted = 0, rev = 0, prof = 0;
       allRows.forEach(it => { 
-          total += it.total_leads; 
-          accepted += it.accepted_leads;
-          rev += (it.revenue || 0);
-          prof += (it.profit || 0);
+          total += it.total_leads; accepted += it.accepted_leads;
+          rev += (it.revenue || 0); prof += (it.profit || 0);
       });
-      
       const wrap = document.createElement('div');
       wrap.className = 'total-summary';
-      wrap.innerHTML = `
-        <span>TOTAAL SELECTIE</span>
-        <div style="display:flex; gap:20px">
-           <span>Omzet: ${money(rev)}</span>
-           <span>Winst: ${money(prof)}</span>
-           <span>Leads: ${fmt(total)} • Acc: ${fmt(accepted)} (${pct(accepted,total).toFixed(1)}%)</span>
-        </div>
-      `;
+      wrap.innerHTML = `<span>TOTAAL SELECTIE</span><div style="display:flex; gap:20px"><span>Omzet: ${money(rev)}</span><span>Winst: ${money(prof)}</span><span>Leads: ${fmt(total)} • Acc: ${fmt(accepted)} (${pct(accepted,total).toFixed(1)}%)</span></div>`;
       return wrap;
     }
 
     mount.addEventListener('click', e => {
       const btn = e.target.closest('[data-preset]');
       if(btn) setPreset(btn.dataset.preset);
+      
+      const th = e.target.closest('th[data-sort]');
+      if (th) {
+        const key = th.dataset.sort;
+        CURRENT_SORT.dir = (CURRENT_SORT.key === key) ? CURRENT_SORT.dir * -1 : -1;
+        CURRENT_SORT.key = key;
+        runCounters(); 
+      }
     });
 
     setPreset('last7');
     mount$('#c_run').addEventListener('click', runCounters);
-    
-    // AANGEPAST: Direct laden bij start!
     runCounters(); 
   }
 
