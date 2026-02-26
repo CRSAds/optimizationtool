@@ -62,6 +62,7 @@ export default async function handler(req, res) {
       profit: Number(row.profit || 0),
       visits: Number(row.visits || 0)
     }));
+    .filter(item => item.total_leads > 0 || item.accepted_leads > 0); // Voeg deze regel toe
 
     return res.status(200).json({ ok: true, items });
   } catch (e) {
