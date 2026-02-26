@@ -7,12 +7,13 @@
 
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
+  let RULES_MAP = {};
 
   function startApp() {
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    // Verbeterde CSS voor blauwe headers en tabel-uitlijning
+    // CSS voor visuele styling
     const style = document.createElement('style');
     style.innerHTML = `
       .rules thead th { 
@@ -25,8 +26,11 @@
         letter-spacing: 0.025em;
       }
       .rules tbody tr:hover { background-color: #f8fafc; }
-      .bot-icon { font-size: 14px; margin-right: 6px; filter: grayscale(0); }
-      .rules td { vertical-align: middle; }
+      .bot-icon { font-size: 14px; margin-right: 6px; }
+      .rules td { vertical-align: middle; height: 45px; }
+      .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+      .badge-danger { background: #fee2e2; color: #991b1b; }
+      .badge-ok { background: #dcfce7; color: #166534; }
     `;
     document.head.appendChild(style);
 
@@ -49,12 +53,14 @@
             <input id="c_sub"  class="rules-input" type="text" placeholder="Sub ID" style="width:80px">
             <button id="c_run" class="rules-btn" type="button" style="margin-left:auto">Toon</button>
           </div>
+          
           <div class="rules-toolbar" style="border-bottom:1px solid #e2e8f0; background:#f8fafc; gap:8px; padding:6px 16px;">
              <button class="badge badge-auto" data-preset="today" style="border:none;cursor:pointer">Vandaag</button>
              <button class="badge badge-auto" data-preset="yesterday" style="border:none;cursor:pointer">Gisteren</button>
              <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
+
           <div class="table-wrap" style="display:flex; flex-direction:column;">
              <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
           </div>
@@ -67,7 +73,8 @@
     const money = (n)=> new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n);
     const pct = (a,t)=> t>0 ? (100*a/t) : 0;
     const escapeHtml = (s)=> String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    
+    const norm = (val) => String(val || '').trim().toLowerCase();
+
     const tokenInput = mount$('#c_token');
     tokenInput.value = localStorage.getItem('rui_token') || 'ditiseenlanggeheimtoken';
 
@@ -89,40 +96,36 @@
       mount$('#c_to').value   = toIso(to);
     }
 
-    let RULES_MAP = null;
-
-    async function ensureRulesAndLogs(){
+    async function ensureRules(){
       try {
         const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         RULES_MAP = {};
 
-        // Hulpfunctie om ID's te normaliseren (verwijder null/undefined/0/leeg)
-        const norm = (val) => {
-          const s = String(val || '').trim().toLowerCase();
-          return (s === 'null' || s === '0' || s === '') ? '' : s;
-        };
-
         (j.items || []).forEach(it => {
-          // We maken een super-match sleutel: offer|aff|sub
-          // We zorgen dat 'null' of lege velden altijd consistent worden behandeld
-          const key = `${norm(it.offer_id)}|${norm(it.affiliate_id)}|${norm(it.sub_id)}`;
-          
-          RULES_MAP[key] = { 
+          const off = norm(it.offer_id);
+          const aff = norm(it.affiliate_id);
+          const sub = norm(it.sub_id);
+          const data = { 
             auto_pilot: !!it.auto_pilot, 
             target_margin: Number(it.target_margin || 15), 
             min_cpc: Number(it.min_cpc || 0) 
           };
+
+          // Hiërarchische opslag voor matching
+          if (off && aff && sub) RULES_MAP[`${off}|${aff}|${sub}`] = data;
+          if (off && sub)        RULES_MAP[`${off}||${sub}`] = data;
+          if (off && aff)        RULES_MAP[`${off}|${aff}|`] = data;
+          if (off)               RULES_MAP[off] = data;
         });
-        console.log("Rules loaded and normalized:", Object.keys(RULES_MAP).length);
-      } catch (e) { console.error("Rules mapping error:", e); RULES_MAP = {}; }
+      } catch (e) { console.error(e); RULES_MAP = {}; }
     }
 
     async function fetchData(){
       const host = mount$('#c_groups');
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Data ophalen…</div>`;
       try {
-        await ensureRulesAndLogs(); 
+        await ensureRules(); 
         const q = new URLSearchParams({ 
           date_from: mount$('#c_from').value, 
           date_to: mount$('#c_to').value,
@@ -175,7 +178,7 @@
       return [...map.values()];
     }
 
-function renderGroup(mode, key, items){
+    function renderGroup(mode, key, items){
       let rows = aggregateRows(items);
       
       rows.sort((a, b) => {
@@ -185,8 +188,8 @@ function renderGroup(mode, key, items){
         return (valA - valB) * CURRENT_SORT.dir;
       });
 
-      let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_visits=0, t_cost=0;
-      rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue; t_prof += r.profit; t_visits += r.visits; t_cost += r.cost; });
+      let t_tot=0, t_acc=0, t_rev=0, t_prof=0, t_cost=0;
+      rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue; t_prof += r.profit; t_cost += r.cost; });
 
       const el = document.createElement('div');
       el.className = 'group'; 
@@ -222,14 +225,16 @@ function renderGroup(mode, key, items){
             </thead>
             <tbody>
               ${rows.map(r => {
-                // Normalisatie helper binnen de map
-                const norm = (val) => {
-                  const s = String(val || '').trim().toLowerCase();
-                  return (s === 'null' || s === '0' || s === '') ? '' : s;
-                };
+                const off = norm(r.offer_id);
+                const aff = norm(r.affiliate_id);
+                const sub = norm(r.sub_id);
 
-                const ruleKey = `${norm(r.offer_id)}|${norm(r.affiliate_id)}|${norm(r.sub_id)}`;
-                const rule = RULES_MAP?.[ruleKey] || {};
+                // Hiërarchische lookup
+                const rule = RULES_MAP[`${off}|${aff}|${sub}`] 
+                          || RULES_MAP[`${off}||${sub}`] 
+                          || RULES_MAP[`${off}|${aff}|`] 
+                          || RULES_MAP[off] 
+                          || {};
                 
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
                 const targetMarge = rule.target_margin || 15;
