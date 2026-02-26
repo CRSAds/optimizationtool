@@ -5,13 +5,26 @@
   const API_COUNTERS = `${API_BASE}/counters`;
   const API_RULES    = `${API_BASE}/rules`; 
 
-  // Globale staat om herladen te voorkomen
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
 
   function startApp() {
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
+
+    // CSS Injectie voor de blauwe header en styling
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .rules thead th { 
+        background-color: #f0f7ff !important; 
+        color: #1e40af !important; 
+        border-bottom: 2px solid #dbeafe !important;
+        padding: 10px 8px !important;
+      }
+      .rules tbody tr:hover { background-color: #f8fafc; }
+      .bot-icon { font-size: 14px; margin-right: 4px; }
+    `;
+    document.head.appendChild(style);
 
     mount.innerHTML = `
       <div class="rules-wrap">
@@ -63,7 +76,7 @@
     selMode.value = localStorage.getItem('c_groupmode') || 'date';
     selMode.addEventListener('change', ()=> {
       localStorage.setItem('c_groupmode', selMode.value);
-      renderAll(); // Direct her-renderen zonder API call
+      renderAll();
     });
 
     function setPreset(which){
@@ -85,12 +98,16 @@
         const j = await r.json();
         RULES_MAP = {};
         (j.items || []).forEach(it => {
-          RULES_MAP[it.id] = { auto_pilot: !!it.auto_pilot, target_margin: Number(it.target_margin || 15), percent_accept: it.percent_accept, min_cpc: Number(it.min_cpc || 0) };
+          RULES_MAP[it.id] = { 
+            auto_pilot: !!it.auto_pilot, 
+            target_margin: Number(it.target_margin || 15), 
+            percent_accept: it.percent_accept, 
+            min_cpc: Number(it.min_cpc || 0) 
+          };
         });
       } catch (e) { console.error(e); RULES_MAP = {}; }
     }
 
-    // De hoofdfunctie die de API aanroept
     async function fetchData(){
       const host = mount$('#c_groups');
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Data ophalen…</div>`;
@@ -111,7 +128,6 @@
       } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
     }
 
-    // De functie die de UI opbouwt op basis van CACHE_DATA
     function renderAll() {
       const host = mount$('#c_groups');
       if (!CACHE_DATA.length) { host.innerHTML = `<div style="padding:20px;text-align:center">Geen resultaten</div>`; return; }
@@ -152,7 +168,6 @@
     function renderGroup(mode, key, items){
       let rows = aggregateRows(items);
       
-      // Sorteren op de client-side data
       rows.sort((a, b) => {
         let valA = a[CURRENT_SORT.key];
         let valB = b[CURRENT_SORT.key];
@@ -164,7 +179,7 @@
       rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue; t_prof += r.profit; t_visits += r.visits; t_cost += r.cost; });
 
       const el = document.createElement('div');
-      el.className = 'group'; // Opengeklapt laten bij sorteren
+      el.className = 'group'; 
       
       el.innerHTML = `
         <div class="group-header" data-role="toggle">
@@ -188,11 +203,11 @@
                 <th style="cursor:pointer" data-sort="revenue">OMZET ↕</th>
                 <th style="cursor:pointer" data-sort="cost">KOSTEN ↕</th>
                 <th style="cursor:pointer" data-sort="profit">WINST ↕</th>
-                <th>ACC %</th>
-                <th>TARGET</th>
+                <th style="cursor:pointer" data-sort="accepted">ACC % ↕</th>
+                <th>TARGET MARGE</th>
                 <th style="cursor:pointer" data-sort="actual_margin">MARGE % ↕</th> 
                 <th>DOEL EPC</th>
-                <th>EPC</th>
+                <th style="cursor:pointer" data-sort="visits">EPC ↕</th>
               </tr>
             </thead>
             <tbody>
@@ -200,6 +215,8 @@
                 const rule = RULES_MAP?.[r.rule_id] || {};
                 const epc = r.visits > 0 ? (r.cost / r.visits) : 0;
                 const isDanger = (r.actual_margin !== null && r.actual_margin < (rule.target_margin || 15));
+                const showBot = rule.auto_pilot ? '<span class="bot-icon" title="Auto Pilot Actief">🤖</span>' : '';
+                
                 return `
                   <tr>
                     <td>${escapeHtml(r.offer_id)}</td>
@@ -210,8 +227,8 @@
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
                     <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    <td style="font-weight:600">${pct(r.accepted,r.total).toFixed(1)}%</td>
-                    <td style="font-weight:600;color:#2563eb">${rule.auto_pilot ? '🤖 ' : ''}${rule.target_margin || 15}%</td>
+                    <td style="font-weight:600; display:flex; align-items:center; border:none;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</td>
+                    <td style="font-weight:600;color:#2563eb">${rule.target_margin || 15}%</td>
                     <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
                     <td style="color:#64748b">${rule.min_cpc > 0 ? '€'+rule.min_cpc.toFixed(2) : '-'}</td>
                     <td style="font-weight:600">${money(epc)}</td>
@@ -250,7 +267,7 @@
         const key = th.dataset.sort;
         CURRENT_SORT.dir = (CURRENT_SORT.key === key) ? CURRENT_SORT.dir * -1 : -1;
         CURRENT_SORT.key = key;
-        renderAll(); // Razendsnel sorteren zonder reload
+        renderAll(); 
       }
     });
 
