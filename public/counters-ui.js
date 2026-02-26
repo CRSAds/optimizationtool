@@ -175,7 +175,7 @@
       return [...map.values()];
     }
 
-    function renderGroup(mode, key, items){
+function renderGroup(mode, key, items){
       let rows = aggregateRows(items);
       
       rows.sort((a, b) => {
@@ -222,10 +222,11 @@
             </thead>
             <tbody>
               ${rows.map(r => {
-              const norm = (val) => {
-              const s = String(val || '').trim().toLowerCase();
-              return (s === 'null' || s === '0' || s === '') ? '' : s;
-              };
+                // Normalisatie helper binnen de map
+                const norm = (val) => {
+                  const s = String(val || '').trim().toLowerCase();
+                  return (s === 'null' || s === '0' || s === '') ? '' : s;
+                };
 
                 const ruleKey = `${norm(r.offer_id)}|${norm(r.affiliate_id)}|${norm(r.sub_id)}`;
                 const rule = RULES_MAP?.[ruleKey] || {};
@@ -245,7 +246,7 @@
                     <td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td>
                     <td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    <td style="font-weight:600; display:flex; align-items:center; border:none; height:40px;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</td>
+                    <td style="font-weight:600;"><div style="display:flex; align-items:center;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</div></td>
                     <td style="font-weight:600;color:#2563eb">${targetMarge}%</td>
                     <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
                     <td style="color:#1e40af; font-weight:600;">${rule.min_cpc > 0 ? money(rule.min_cpc) : '-'}</td>
