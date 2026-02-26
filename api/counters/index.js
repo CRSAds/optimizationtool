@@ -3,15 +3,25 @@ import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 export default async function handler(req, res) {
-  // 1. CORS LOGICA
+  // 1. GECORRIGEERDE CORS LOGICA
   const origin = req.headers.origin;
-  const allowed = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',');
-  if (allowed.includes('*') || (origin && allowed.includes(origin))) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS || '*').split(',').map(s => s.trim());
+  
+  if (allowedOrigins.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
+
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token, Authorization');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Belangrijk: Beantwoord het OPTIONS (preflight) verzoek direct
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   // 2. AUTH CHECK
   const incomingToken = req.headers['x-admin-token'] || req.headers['X-Admin-Token'];
@@ -48,21 +58,22 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
-    // 4. Map de data naar het formaat van de UI
-    const items = (data || []).map(row => ({
-      date: row.day,
-      offer_id: row.offer_id,
-      sub_id: row.sub_id,
-      affiliate_id: row.affiliate_id,
-      total_leads: row.tool_total_leads,
-      accepted_leads: row.tool_accepted_leads,
-      actual_margin: row.margin_pct ? (Number(row.margin_pct) * 100) : null,
-      revenue: Number(row.omzet_totaal || 0),
-      cost: Number(row.affise_cost || 0),
-      profit: Number(row.profit || 0),
-      visits: Number(row.visits || 0)
-    }));
-    .filter(item => item.total_leads > 0 || item.accepted_leads > 0); // Voeg deze regel toe
+    // 4. Map de data EN FIX SYNTAX FOUT bij filter
+    const items = (data || [])
+      .map(row => ({
+        date: row.day,
+        offer_id: row.offer_id,
+        sub_id: row.sub_id,
+        affiliate_id: row.affiliate_id,
+        total_leads: Number(row.tool_total_leads || 0),
+        accepted_leads: Number(row.tool_accepted_leads || 0),
+        actual_margin: row.margin_pct ? (Number(row.margin_pct) * 100) : null,
+        revenue: Number(row.omzet_totaal || 0),
+        cost: Number(row.affise_cost || 0),
+        profit: Number(row.profit || 0),
+        visits: Number(row.visits || 0)
+      }))
+      .filter(item => item.total_leads > 0 || item.accepted_leads > 0);
 
     return res.status(200).json({ ok: true, items });
   } catch (e) {
