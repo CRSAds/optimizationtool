@@ -141,39 +141,51 @@
           tr.className = `rule-row ${isOpen ? 'visible' : ''}`;
           tr.dataset.id = it.id;
           
-          const autoBadge = it.auto_pilot 
-            ? `<span class="badge badge-auto">AAN</span>` 
-            : `<span class="badge badge-off">UIT</span>`;
+          // Status Badge (Aan/Uit)
+          const statusBadge = it.active 
+            ? `<span class="badge badge-ok">ACTIEF</span>` 
+            : `<span class="badge badge-off">PAUZE</span>`;
+        
+          // Auto Pilot Indicator
+          const autoPilotDisplay = it.auto_pilot 
+            ? `<div class="col-autopilot" style="cursor:pointer"><span class="bot-icon">🤖</span><span class="badge badge-auto">AUTO</span></div>` 
+            : `<div class="col-autopilot" style="cursor:pointer"><span class="badge badge-off">MANUEEL</span></div>`;
           
+          // Pilot Log met datum/tijd (komt nu direct uit de backend)
           const pilotLog = it.pilot_log 
-            ? `<div style="font-size:10px; color:#dc2626; margin-top:4px; white-space:nowrap">${it.pilot_log}</div>` 
+            ? `<div style="font-size:10px; color:#64748b; margin-top:4px; font-style:italic;">${it.pilot_log}</div>` 
             : '';
-
+        
           tr.innerHTML = `
             <td></td>
-            <td><span style="color:#94a3b8;font-size:11px">${esc(it.offer_id)}</span></td>
-            <td><input type="text" value="${esc(readDesc(it))}" data-k="description"></td>
-            <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
-            <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
-            
-            <td><input type="number" step="0.01" value="${it.min_cpc ?? 0}" data-k="min_cpc" style="color:#2563eb; font-weight:600"></td>
-
-            <td><input type="number" min="0" max="100" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
-            
-            <td style="text-align:center;" class="col-autopilot">
-               ${autoBadge}
-               ${pilotLog}
+            <td><span style="font-weight:700; color:#1e40af">${esc(it.offer_id)}</span></td>
+            <td>
+                <input type="text" value="${esc(readDesc(it))}" data-k="description" style="border:none; background:transparent; font-weight:500">
+                ${pilotLog}
             </td>
-
-            <td><input type="number" step="0.1" value="${it.target_margin ?? 15}" data-k="target_margin"></td>
-            <td><input type="number" value="${it.min_volume ?? 20}" data-k="min_volume"></td>
+            <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id" placeholder="-"></td>
+            <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id" placeholder="-"></td>
             
-            <td style="text-align:center">
-              <input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active">
+            <td><input type="number" step="0.01" value="${it.min_cpc ?? 0}" data-k="min_cpc" style="color:#2563eb; font-weight:700"></td>
+        
+            <td>
+                <div style="display:flex; align-items:center; gap:4px">
+                    <input type="number" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept" style="width:50px">
+                    <span style="font-size:10px; color:#94a3b8">%</span>
+                </div>
             </td>
+            
+            <td style="text-align:center;">${autoPilotDisplay}</td>
+        
+            <td><input type="number" value="${it.target_margin ?? 15}" data-k="target_margin" style="width:50px"></td>
+            <td><input type="number" value="${it.min_volume ?? 20}" data-k="min_volume" style="width:50px"></td>
+            
+            <td style="text-align:center">${statusBadge}</td>
+            
             <td class="row-actions">
               <button class="rules-btn ok" data-act="save" type="button">Save</button>
               <button class="rules-btn danger" data-act="delete" type="button">Del</button>
+              <input class="chk" type="checkbox" ${it.active ? 'checked' : ''} data-k="active" style="display:none">
             </td>
           `;
           tbody.appendChild(tr);
