@@ -26,19 +26,19 @@
             <button id="rui_refresh" class="rules-btn ghost" type="button" style="margin-left:auto">⟳</button>
           </div>
 
-          <div class="newbar" style="border-bottom: 1px solid #e2e8f0; border-top:none;">
+          <div class="newbar" style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
             <span style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;">Nieuwe Regel:</span>
             <input type="text" id="n_off"  class="rules-input" placeholder="Offer ID" style="width:100px;border-color:#93c5fd">
             <input type="text" id="n_desc" class="rules-input" placeholder="Omschrijving" style="flex:1">
             <input type="text" id="n_aff"  class="rules-input" placeholder="Aff ID" style="width:70px">
             <input type="text" id="n_sub"  class="rules-input" placeholder="Sub ID" style="width:70px">
-            <button id="rui_add_top" class="rules-btn ok" type="button">Add</button>
+            <button id="rui_add_top" class="rules-btn ok" type="button">Toevoegen</button>
           </div>
 
           <div class="table-wrap">
             <table class="rules">
               <colgroup>
-                 <col style="width:40px">  <col style="width:90px">  <col style="width:300px"> <col style="width:80px">  <col style="width:80px">  <col style="width:90px">  <col style="width:90px">  <col style="width:110px">  <col style="width:80px">  <col style="width:70px">  <col style="width:80px">  <col style="width:120px"> </colgroup>
+                 <col style="width:40px">  <col style="width:90px">  <col style="width:300px"> <col style="width:80px">  <col style="width:80px">  <col style="width:90px">  <col style="width:90px">  <col style="width:110px">  <col style="width:80px">  <col style="width:70px">  <col style="width:100px"> <col style="width:120px"> </colgroup>
               <thead>
                 <tr>
                   <th></th>
@@ -107,7 +107,6 @@
         const items = groups[key];
         const isOpen = OPEN_GROUPS.has(key) || term.length > 0;
         
-        // PUNT 1: Data in topregels (Aggregatie)
         const avgAcc = (items.reduce((sum, i) => sum + (i.percent_accept || 0), 0) / items.length).toFixed(1);
         const avgEPC = (items.reduce((sum, i) => sum + (i.min_cpc || 0), 0) / items.length).toFixed(2);
         const hasAuto = items.some(i => i.auto_pilot);
@@ -117,29 +116,28 @@
         headerTr.dataset.key = key;
         headerTr.innerHTML = `
           <td style="text-align:center"><span class="group-expander">▶</span></td>
-          <td><b>${key}</b></td>
+          <td><b style="color:#1e293b">${key}</b></td>
           <td style="color:#64748b; font-size:11px;">${items.length} regels</td>
           <td></td><td></td>
-          <td style="color:#2563eb; font-weight:600;">avg €${avgEPC}</td>
-          <td style="font-weight:600;">${avgAcc}%</td>
+          <td style="color:#2563eb; font-weight:700;">avg €${avgEPC}</td>
+          <td style="font-weight:700; color:#1e293b;">${avgAcc}%</td>
           <td style="text-align:center">${hasAuto ? '🤖' : ''}</td>
           <td></td><td></td><td></td><td></td>
         `;
         tbody.appendChild(headerTr);
 
         if(isOpen) {
-          // PUNT 3: In-line toevoegen per offer
           const addTr = document.createElement('tr');
           addTr.className = 'rule-row visible';
           addTr.style.background = '#f0f9ff';
           addTr.innerHTML = `
             <td></td>
-            <td style="color:#94a3b8; font-size:11px;">Sneltoevoegen:</td>
-            <td><input type="text" class="quick-desc" placeholder="Nieuwe sub/omschrijving..." style="background:white"></td>
-            <td><input type="text" class="quick-aff" placeholder="Aff ID" style="background:white"></td>
-            <td><input type="text" class="quick-sub" placeholder="Sub ID" style="background:white"></td>
+            <td style="color:#0369a1; font-size:11px; font-weight:700;">SNEL TOEVOEGEN:</td>
+            <td><input type="text" class="quick-desc" placeholder="Omschrijving..." style="background:white; border-color:#bae6fd"></td>
+            <td><input type="text" class="quick-aff" placeholder="Aff ID" style="background:white; border-color:#bae6fd"></td>
+            <td><input type="text" class="quick-sub" placeholder="Sub ID" style="background:white; border-color:#bae6fd"></td>
             <td colspan="6"></td>
-            <td><button class="rules-btn ok quick-add-btn" data-off="${key}">Add</button></td>
+            <td><button class="rules-btn ok quick-add-btn" data-off="${key}" style="width:100%">Add</button></td>
           `;
           tbody.appendChild(addTr);
 
@@ -148,24 +146,23 @@
             tr.className = 'rule-row visible';
             tr.dataset.id = it.id;
             
-            // Tooltip logica: verander de weergave van de pilot_log
             const pilotLogHtml = it.pilot_log 
               ? `<div class="pilot-info-wrapper">
                    <span class="info-icon">i</span>
                    <span class="tooltip-text"><b>Laatste actie:</b><br>${it.pilot_log}</span>
                  </div>` 
               : '';
-          
+
             const autoPilotDisplay = `
-              <div class="col-autopilot" style="display:flex; align-items:center; justify-content:center; height:100%;">
+              <div class="col-autopilot" style="display:flex; align-items:center; justify-content:center; gap:2px; cursor:pointer; height:32px;">
                  ${it.auto_pilot ? '<span class="bot-icon">🤖</span><span class="badge badge-auto">AUTO</span>' : '<span class="badge badge-off">MANUEEL</span>'}
                  ${pilotLogHtml}
               </div>`;
-          
+
             tr.innerHTML = `
               <td></td>
-              <td><span style="color:#64748b; font-size:11px; font-weight:700;">${esc(it.offer_id)}</span></td>
-              <td><input type="text" value="${esc(readDesc(it))}" data-k="description" style="color:#1e293b;"></td>
+              <td><span style="color:#1e293b; font-size:12px; font-weight:700;">${esc(it.offer_id)}</span></td>
+              <td><input type="text" value="${esc(readDesc(it))}" data-k="description" style="color:#1e293b; font-weight:500;"></td>
               <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id" placeholder="-"></td>
               <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id" placeholder="-"></td>
               <td><input type="number" step="0.01" value="${it.min_cpc ?? 0}" data-k="min_cpc" style="color:#2563eb; font-weight:700;"></td>
@@ -174,13 +171,13 @@
               <td><input type="number" value="${it.target_margin ?? 15}" data-k="target_margin"></td>
               <td><input type="number" value="${it.min_volume ?? 20}" data-k="min_volume"></td>
               <td style="text-align:center; vertical-align:middle;">
-                  <span class="badge ${it.active ? 'badge-ok' : 'badge-off'}" style="font-size:10px; min-width:60px; text-align:center;">
-                      ${it.active ? 'ACTIEF' : 'GEPAUZEERD'}
-                  </span>
+                <span class="badge ${it.active ? 'badge-ok' : 'badge-off'}" style="min-width:70px; text-align:center;">
+                   ${it.active ? 'ACTIEF' : 'PAUZE'}
+                </span>
               </td>
-              <td class="row-actions" style="vertical-align:middle;">
-                <button class="rules-btn ok" data-act="save" type="button" style="padding: 0 10px;">Save</button>
-                <button class="rules-btn danger" data-act="delete" type="button" style="padding: 0 10px;">Del</button>
+              <td class="row-actions">
+                <button class="rules-btn ok" data-act="save" type="button">Save</button>
+                <button class="rules-btn danger" data-act="delete" type="button">Del</button>
                 <input type="checkbox" ${it.active ? 'checked' : ''} data-k="active" style="display:none">
               </td>
             `;
@@ -190,9 +187,7 @@
       });
     }
 
-    // Event Delegation voor Knoppen
     mount.addEventListener('click', async (e) => {
-      // Toggle Groep
       const header = e.target.closest('tr.group-row');
       if(header){
         const key = header.dataset.key;
@@ -201,55 +196,52 @@
         render(); return;
       }
 
-      // Quick Add per Offer
       if(e.target.classList.contains('quick-add-btn')) {
         const off = e.target.dataset.off;
         const row = e.target.closest('tr');
-        const payload = {
+        await addRule({
           offer_id: off,
           description: row.querySelector('.quick-desc').value,
           affiliate_id: row.querySelector('.quick-aff').value,
           sub_id: row.querySelector('.quick-sub').value,
           percent_accept: 100, active: true, auto_pilot: false, min_cpc: 0
-        };
-        await addRule(payload);
+        });
       }
 
-      // Top Add Bar
       if(e.target.id === 'rui_add_top') {
-        const payload = {
+        await addRule({
           offer_id: $('#n_off').value,
           description: $('#n_desc').value,
           affiliate_id: $('#n_aff').value,
           sub_id: $('#n_sub').value,
           percent_accept: 100, active: true, auto_pilot: false, min_cpc: 0
-        };
-        await addRule(payload);
+        });
+        $('#n_off').value = ''; $('#n_desc').value = ''; $('#n_aff').value = ''; $('#n_sub').value = '';
       }
       
-      // Auto Pilot Toggle
       const autoCol = e.target.closest('.col-autopilot');
       if (autoCol) {
         const tr = autoCol.closest('tr');
-        const id = tr.dataset.id;
-        const item = CACHE.find(i => i.id == id);
+        const item = CACHE.find(i => i.id == tr.dataset.id);
         if(item) {
-          const newState = !item.auto_pilot;
-          await patchRule(id, { auto_pilot: newState });
-          item.auto_pilot = newState;
+          item.auto_pilot = !item.auto_pilot;
+          await patchRule(item.id, { auto_pilot: item.auto_pilot });
           render();
         }
       }
 
-      // Save/Delete knoppen
       const btn = e.target.closest('button[data-act]');
       if(btn) {
         const tr = btn.closest('tr');
         const id = tr.dataset.id;
         if(btn.dataset.act === 'save') {
            const data = {};
-           tr.querySelectorAll('[data-k]').forEach(i => data[i.dataset.k] = i.type==='number' ? parseFloat(i.value) : i.value);
+           tr.querySelectorAll('[data-k]').forEach(i => data[i.dataset.k] = i.type==='number' ? parseFloat(i.value) : (i.type==='checkbox' ? i.checked : i.value));
            await patchRule(id, data);
+           const item = CACHE.find(i => i.id == id);
+           Object.assign(item, data);
+           btn.textContent = 'Opgeslagen';
+           setTimeout(() => btn.textContent = 'Save', 1500);
         }
         if(btn.dataset.act === 'delete' && confirm('Zeker weten?')) {
            await deleteRule(id);
@@ -257,7 +249,6 @@
       }
     });
 
-    // API Helpers
     async function addRule(p) {
       if(!p.offer_id) return alert('Offer ID nodig');
       await fetch(API_URL, { method:'POST', headers: headers(), body: JSON.stringify(p)});
@@ -272,16 +263,20 @@
     }
 
     async function loadRules() {
-      tbody.innerHTML = '<tr><td colspan="12">Laden...</td></tr>';
-      const res = await fetch(API_URL, { headers: headers() });
-      const data = await res.json();
-      CACHE = data.items || [];
-      render();
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:40px; color:#94a3b8">Regels laden...</td></tr>';
+      try {
+        const res = await fetch(API_URL, { headers: headers() });
+        const data = await res.json();
+        CACHE = data.items || [];
+        render();
+      } catch (e) { msgEl.innerHTML = 'Fout bij laden regels.'; msgEl.style.display = 'block'; }
     }
     
     loadRules();
     $('#rui_refresh').addEventListener('click', loadRules);
     $('#rui_search').addEventListener('input', render);
+    $('#rui_active_only').addEventListener('change', render);
+    $('#rui_autopilot_only').addEventListener('change', render);
   }
 
   startApp();
