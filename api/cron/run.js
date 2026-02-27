@@ -121,7 +121,9 @@ export default async function handler(req, res) {
       let currentAccept = rule.percent_accept || 100;
       let newAccept = currentAccept;
       let logMsg = "";
-      const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+      const now = new Date();
+      const time = now.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' }) + ' ' + 
+                   now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
 
       // Emergency Brake & EPC logica
       if (actualMargin < EMERGENCY_THRESHOLD) {
