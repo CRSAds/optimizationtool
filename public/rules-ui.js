@@ -148,30 +148,39 @@
             tr.className = 'rule-row visible';
             tr.dataset.id = it.id;
             
-            // PUNT 2: Uitlijning Autopilot (Flexbox fix)
+            // Tooltip logica: verander de weergave van de pilot_log
+            const pilotLogHtml = it.pilot_log 
+              ? `<div class="pilot-info-wrapper">
+                   <span class="info-icon">i</span>
+                   <span class="tooltip-text"><b>Laatste actie:</b><br>${it.pilot_log}</span>
+                 </div>` 
+              : '';
+          
             const autoPilotDisplay = `
-              <div class="col-autopilot" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; min-height:40px;">
-                <div style="display:flex; align-items:center; gap:4px;">
-                   ${it.auto_pilot ? '<span class="bot-icon">🤖</span><span class="badge badge-auto">AUTO</span>' : '<span class="badge badge-off">MANUEEL</span>'}
-                </div>
-                ${it.pilot_log ? `<div style="font-size:9px; color:#64748b; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px;">${it.pilot_log}</div>` : ''}
+              <div class="col-autopilot" style="display:flex; align-items:center; justify-content:center; height:100%;">
+                 ${it.auto_pilot ? '<span class="bot-icon">🤖</span><span class="badge badge-auto">AUTO</span>' : '<span class="badge badge-off">MANUEEL</span>'}
+                 ${pilotLogHtml}
               </div>`;
-
+          
             tr.innerHTML = `
               <td></td>
-              <td><span style="color:#94a3b8;font-size:11px">${esc(it.offer_id)}</span></td>
-              <td><input type="text" value="${esc(readDesc(it))}" data-k="description"></td>
-              <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id"></td>
-              <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id"></td>
-              <td><input type="number" step="0.01" value="${it.min_cpc ?? 0}" data-k="min_cpc" style="color:#2563eb; font-weight:700"></td>
-              <td><input type="number" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept"></td>
-              <td style="text-align:center;">${autoPilotDisplay}</td>
+              <td><span style="color:#64748b; font-size:11px; font-weight:700;">${esc(it.offer_id)}</span></td>
+              <td><input type="text" value="${esc(readDesc(it))}" data-k="description" style="color:#1e293b;"></td>
+              <td><input type="text" value="${esc(it.affiliate_id)}" data-k="affiliate_id" placeholder="-"></td>
+              <td><input type="text" value="${esc(it.sub_id)}" data-k="sub_id" placeholder="-"></td>
+              <td><input type="number" step="0.01" value="${it.min_cpc ?? 0}" data-k="min_cpc" style="color:#2563eb; font-weight:700;"></td>
+              <td><input type="number" value="${Number(it.percent_accept ?? 0)}" data-k="percent_accept" style="font-weight:700;"></td>
+              <td style="text-align:center; vertical-align:middle;">${autoPilotDisplay}</td>
               <td><input type="number" value="${it.target_margin ?? 15}" data-k="target_margin"></td>
               <td><input type="number" value="${it.min_volume ?? 20}" data-k="min_volume"></td>
-              <td style="text-align:center"><span class="badge ${it.active ? 'badge-ok' : 'badge-off'}">${it.active ? 'ACTIEF' : 'UIT'}</span></td>
-              <td class="row-actions">
-                <button class="rules-btn ok" data-act="save" type="button">Save</button>
-                <button class="rules-btn danger" data-act="delete" type="button">Del</button>
+              <td style="text-align:center; vertical-align:middle;">
+                  <span class="badge ${it.active ? 'badge-ok' : 'badge-off'}" style="font-size:10px; min-width:60px; text-align:center;">
+                      ${it.active ? 'ACTIEF' : 'GEPAUZEERD'}
+                  </span>
+              </td>
+              <td class="row-actions" style="vertical-align:middle;">
+                <button class="rules-btn ok" data-act="save" type="button" style="padding: 0 10px;">Save</button>
+                <button class="rules-btn danger" data-act="delete" type="button" style="padding: 0 10px;">Del</button>
                 <input type="checkbox" ${it.active ? 'checked' : ''} data-k="active" style="display:none">
               </td>
             `;
