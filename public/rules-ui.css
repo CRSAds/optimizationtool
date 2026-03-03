@@ -35,7 +35,7 @@ body {
   gap: 20px;
 }
 
-/* --- PILOT LOG CARD (VOLLEDIG LOSSTAAND) --- */
+/* --- PILOT LOG CARD (SEPARATE) --- */
 .pilot-log-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -54,7 +54,7 @@ body {
   justify-content: space-between;
 }
 
-/* --- DE MAIN RESULTATEN / RULES CARD --- */
+/* --- MAIN RESULTS CARD --- */
 .rules-card { 
   background: var(--panel); 
   border: 1px solid var(--border); 
@@ -66,7 +66,6 @@ body {
   flex: 1;
 }
 
-/* --- TOOLBAR --- */
 .rules-toolbar {
   flex-shrink: 0;
   display: flex; 
@@ -79,61 +78,38 @@ body {
   overflow-x: auto;
 }
 
-.rules-label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
-
 .rules-input {
   background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 4px; height: 32px; padding: 0 8px; outline: none; font-size: 13px;
 }
-.rules-input:focus { border-color: var(--brand); background: #fff; }
 
-/* --- BUTTONS --- */
 .rules-btn {
   height: 32px; padding: 0 12px; border-radius: 4px; border: none;
   background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  white-space: nowrap; transition: filter 0.1s;
-}
-.rules-btn:hover { filter: brightness(1.1); }
-.rules-btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
-.rules-btn.ok { background: var(--ok); }
-.rules-btn.danger { background: var(--danger); }
-
-/* --- TABLE AREA --- */
-.table-wrap { 
-  flex: 1; 
-  overflow-y: auto; 
-  background: #fff; 
-  position: relative;
 }
 
-table.rules { 
-  width: 100%; 
-  border-collapse: collapse; 
-  font-size: 12px; 
-  table-layout: fixed; 
-}
+/* --- TABLE STYLING --- */
+.table-wrap { flex: 1; overflow-y: auto; background: #fff; position: relative; }
+
+table.rules { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 
 table.rules thead th {
   position: sticky; top: 0; z-index: 10; 
   background: var(--thead); color: var(--muted);
-  text-align: left; 
-  padding: 8px 12px;
+  text-align: left; padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  white-space: nowrap;
 }
 
-/* COMPACTERE RIJEN VOOR RESULTATEN */
 table.rules td {
   padding: 4px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  color: #334155;
-  height: 32px; 
+  height: 32px; /* COMPACT ROWS */
 }
 
-/* --- GROEP HEADERS (DE RIJEN DIE JE KUNT INKLAPPEN) --- */
+/* --- GROUP HEADERS --- */
 .group-header { 
   background: #f1f5f9 !important; 
   cursor: pointer;
@@ -147,51 +123,23 @@ table.rules td {
 
 .chev { 
   display: inline-block; 
-  width: 16px;
-  height: 16px;
+  width: 16px; height: 16px;
   transition: transform 0.2s; 
   margin-right: 8px;
   color: var(--brand);
   text-align: center;
 }
 
-/* INKLAP-LOGICA VIA CSS CLASSES */
 .group.collapsed .group-body { display: none; }
 .group.collapsed .chev { transform: rotate(-90deg); }
 
-/* --- BADGES & STATUS --- */
+/* --- BADGES --- */
 .badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; text-transform: uppercase; border: 1px solid transparent; }
 .badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
-.badge-off { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-.badge-ok { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.badge-ok { background: #dcfce7; color: #166534; }
 .badge-danger { background: #fee2e2; color: #991b1b; }
 
-.bot-icon { font-size: 14px; margin-right: 4px; vertical-align: middle; }
-
-/* --- RULES SPECIFIEKE RIJEN (INDIEEN GEBRUIKT) --- */
-tr.rule-row.visible { display: table-row; }
-tr.rule-row:hover td { background: #f8fafc; }
-
-/* Inputs in tabel */
-table.rules input { 
-  width: 100%; 
-  height: 26px; 
-  border: 1px solid var(--border); 
-  border-radius: 4px; 
-  padding: 0 6px; 
-  font-size: 12px;
-  color: #1e293b; 
-}
-
-/* --- SUMMARY / GRAND TOTAL --- */
 .total-summary { 
-  padding: 12px 16px; 
-  background: var(--brand); 
-  color: #fff; 
-  font-weight: 700; 
-  display: flex; 
-  justify-content: space-between; 
-  border-radius: 0 0 8px 8px;
+  padding: 12px 16px; background: var(--brand); color: #fff; font-weight: 700; 
+  display: flex; justify-content: space-between; border-radius: 0 0 8px 8px;
 }
-
-.chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
