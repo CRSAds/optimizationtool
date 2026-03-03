@@ -140,8 +140,19 @@ export default async function handler(req, res) {
         logMsg = `${timeFull}: Goede marge (${actualMargin.toFixed(1)}%). Acc naar ${newAccept}%`;
       }
 
-      if (newAccept !== currentAccept) {
+        if (newAccept !== currentAccept) {
+        // 1. Log naar Directus (huidige status)
         updates.push({ id: rule.id, percent_accept: newAccept, pilot_log: cleanString(logMsg) });
+
+        // 2. Log naar Supabase (geschiedenis) - VOEG DIT TOE
+        await supabase.from('pilot_logs').insert({
+          offer_id: off,
+          affiliate_id: norm(rule.affiliate_id), // Gebruik de ID's uit de regel
+          sub_id: sub,
+          new_accept: newAccept,
+          reason: cleanString(logMsg)
+        });
+
         debug_info.push(`✅ ${identifier} aangepast naar ${newAccept}%.`);
       }
     }
