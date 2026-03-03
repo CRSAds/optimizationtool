@@ -1,3 +1,5 @@
+// public/counters-ui.js
+
 (function() {
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
@@ -114,7 +116,7 @@
         groupEl.className = `group ${isOpen ? '' : 'collapsed'}`;
         
         groupEl.innerHTML = `
-          <div class="group-header" data-key="${key}">
+          <div class="group-header" style="cursor:pointer; display:flex; align-items:center; padding:6px 16px; background:#f1f5f9; border-bottom:1px solid #cbd5e1;">
             <span class="chev">▼</span>
             <span style="flex:1"><b>${key}</b></span>
             <div style="display:flex; gap:15px; font-size:11px;">
@@ -133,16 +135,22 @@
               <tbody>
                 ${items.map(r => {
                   const rule = RULES_MAP[`${norm(r.offer_id)}||${norm(r.sub_id)}`] || RULES_MAP[norm(r.offer_id)] || {};
-                  const isDanger = (r.actual_margin < (rule.target_margin || 15));
+                  const isDanger = (r.actual_margin !== null && r.actual_margin < (rule.target_margin || 15));
+                  
+                  // FIX: toFixed(1) alleen als actual_margin niet null is
+                  const marginDisplay = r.actual_margin !== null 
+                    ? `${r.actual_margin.toFixed(1)}%` 
+                    : '—';
+
                   return `
                     <tr>
-                      <td>${r.offer_id}</td><td>${r.sub_id || '-'}</td>
+                      <td><b>${r.offer_id}</b></td><td>${r.sub_id || '-'}</td>
                       <td>${fmt(r.total_leads)}</td><td>${fmt(r.accepted_leads)}</td>
                       <td>${money(r.revenue)}</td><td style="font-weight:700; color:${r.profit>=0?'#16a34a':'#dc2626'}">${money(r.profit)}</td>
-                      <td>${rule.auto_pilot?'🤖':''}${pct(r.accepted_leads, r.total_leads).toFixed(1)}%</td>
-                      <td>${rule.target_margin || 15}%</td>
-                      <td><span class="badge ${isDanger?'badge-danger':'badge-ok'}">${r.actual_margin.toFixed(1)}%</span></td>
-                      <td>${money(r.visits > 0 ? r.cost/r.visits : 0)}</td>
+                      <td style="font-weight:600">${rule.auto_pilot?'🤖':''}${pct(r.accepted_leads, r.total_leads).toFixed(1)}%</td>
+                      <td style="color:#2563eb">${rule.target_margin || 15}%</td>
+                      <td><span class="badge ${isDanger?'badge-danger':'badge-ok'}">${marginDisplay}</span></td>
+                      <td style="font-weight:600">${money(r.visits > 0 ? r.cost/r.visits : 0)}</td>
                     </tr>`;
                 }).join('')}
               </tbody>
@@ -150,7 +158,9 @@
           </div>
         `;
 
-        groupEl.querySelector('.group-header').onclick = () => {
+        // INKLAP EVENT LISTENER (Forceer toggle op de header klik)
+        groupEl.querySelector('.group-header').onclick = (e) => {
+          e.preventDefault();
           if (OPEN_GROUPS.has(key)) OPEN_GROUPS.delete(key);
           else OPEN_GROUPS.add(key);
           groupEl.classList.toggle('collapsed');
@@ -161,33 +171,43 @@
     }
 
     async function fetchData() {
-      await ensureRules();
-      await fetchLogs();
-      const q = new URLSearchParams({ 
+      const host = mount$('#c_groups');
+      host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
+      try {
+        await ensureRules();
+        await fetchLogs();
+        const q = new URLSearchParams({ 
           date_from: mount$('#c_from').value, 
           date_to: mount$('#c_to').value 
-      });
-      const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
-      const j = await r.json();
-      CACHE_DATA = j.items || [];
-      renderAll();
+        });
+        const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
+        const j = await r.json();
+        CACHE_DATA = j.items || [];
+        // OPEN_GROUPS.clear(); // Optioneel: zet dit aan als je alles weer wilt inklappen bij nieuwe zoekopdracht
+        renderAll();
+      } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
     }
 
     async function ensureRules() {
-      const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
-      const j = await r.json();
-      (j.items || []).forEach(it => {
-        const off = norm(it.offer_id), sub = norm(it.sub_id);
-        RULES_MAP[sub ? `${off}||${sub}` : off] = it;
-      });
+      try {
+        const r = await fetch(API_RULES, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
+        const j = await r.json();
+        (j.items || []).forEach(it => {
+          const off = norm(it.offer_id), sub = norm(it.sub_id);
+          RULES_MAP[sub ? `${off}||${sub}` : off] = it;
+        });
+      } catch(e) { console.error("Rules load error", e); }
     }
 
     const d = new Date();
-    mount$('#c_from').value = d.toISOString().split('T')[0];
-    mount$('#c_to').value = d.toISOString().split('T')[0];
+    const today = d.toISOString().split('T')[0];
+    mount$('#c_from').value = today;
+    mount$('#c_to').value = today;
     mount$('#c_run').onclick = fetchData;
+    
     fetchData();
   }
 
-  startApp();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp);
+  else startApp();
 })();
