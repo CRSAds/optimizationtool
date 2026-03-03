@@ -7,7 +7,7 @@
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
   let RULES_MAP = {};
-  let OPEN_GROUPS = new Set(); // Hierin slaan we op welke groepen OPEN zijn
+  let OPEN_GROUPS = new Set(); 
 
   function startApp() {
     const mount = document.getElementById('counters-ui');
@@ -114,7 +114,7 @@
         groupEl.className = `group ${isOpen ? '' : 'collapsed'}`;
         
         groupEl.innerHTML = `
-          <div class="group-header" style="cursor:pointer; display:flex; align-items:center; padding:8px 16px; background:#f1f5f9; border-bottom:1px solid #cbd5e1;">
+          <div class="group-header" data-key="${key}">
             <span class="chev">▼</span>
             <span style="flex:1"><b>${key}</b></span>
             <div style="display:flex; gap:15px; font-size:11px;">
@@ -150,7 +150,6 @@
           </div>
         `;
 
-        // INKLAP EVENT LISTENER
         groupEl.querySelector('.group-header').onclick = () => {
           if (OPEN_GROUPS.has(key)) OPEN_GROUPS.delete(key);
           else OPEN_GROUPS.add(key);
@@ -164,7 +163,10 @@
     async function fetchData() {
       await ensureRules();
       await fetchLogs();
-      const q = new URLSearchParams({ date_from: mount$('#c_from').value, date_to: mount$('#c_to').value });
+      const q = new URLSearchParams({ 
+          date_from: mount$('#c_from').value, 
+          date_to: mount$('#c_to').value 
+      });
       const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
       const j = await r.json();
       CACHE_DATA = j.items || [];
