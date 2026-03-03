@@ -4,11 +4,12 @@
   const API_BASE     = 'https://optimizationtool.vercel.app/api';
   const API_COUNTERS = `${API_BASE}/counters`;
   const API_RULES    = `${API_BASE}/rules`; 
+  const API_LOGS     = `${API_BASE}/pilot-logs`;
 
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
   let RULES_MAP = {};
-  // NIEUW: Houdt bij welke groepen (bijv. datums) zijn opengeklapt
+  // Houdt bij welke groepen (bijv. datums) zijn opengeklapt
   let OPEN_GROUPS = new Set(); 
 
   function startApp() {
@@ -32,9 +33,13 @@
       .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
       .badge-danger { background: #fee2e2; color: #991b1b; }
       .badge-ok { background: #dcfce7; color: #166534; }
+      .badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
       /* CSS voor inklappen */
       .group.collapsed .group-body { display: none; }
       .group.collapsed .chev { transform: rotate(0deg) !important; }
+      
+      #pilot-logs-list::-webkit-scrollbar { width: 6px; }
+      #pilot-logs-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     `;
     document.head.appendChild(style);
 
@@ -63,7 +68,13 @@
              <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
-          <div class="table-wrap"><div id="c_groups" style="padding-bottom:20px;"></div></div>
+          <div class="table-wrap" style="display:flex; flex-direction:column;">
+             <div id="pilot-logs-widget" style="display:none; background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:15px; max-height:250px; overflow-y:auto;">
+               <h4 style="margin:0 0 10px 0; font-size:12px; color:#1e40af; text-transform:uppercase;">🚀 Recente Pilot Ingrepen</h4>
+               <div id="pilot-logs-list"></div>
+             </div>
+             <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
+          </div>
         </div>
       </div>
     `;
@@ -82,7 +93,7 @@
     selMode.value = localStorage.getItem('c_groupmode') || 'date';
     selMode.addEventListener('change', ()=> {
       localStorage.setItem('c_groupmode', selMode.value);
-      OPEN_GROUPS.clear(); // Reset open groepen bij wisselen mode
+      OPEN_GROUPS.clear(); 
       renderAll();
     });
 
@@ -113,11 +124,58 @@
       } catch (e) { console.error(e); RULES_MAP = {}; }
     }
 
+    async function fetchLogs() {
+      const list = mount$('#pilot-logs-list');
+      const widget = mount$('#pilot-logs-widget');
+      try {
+        const r = await fetch(API_LOGS, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
+        const j = await r.json();
+        const logs = j.items || [];
+        
+        if (logs.length === 0) { widget.style.display = 'none'; return; }
+        widget.style.display = 'block';
+
+        const counts = {};
+        const reversed = [...logs].reverse();
+        const logsWithCount = reversed.map(log => {
+          const key = `${log.offer_id}|${log.affiliate_id}|${log.sub_id}`;
+          counts[key] = (counts[key] || 0) + 1;
+          return { ...log, adjustment_nr: counts[key] };
+        }).reverse();
+
+        list.innerHTML = `
+          <table style="width:100%; border-collapse:collapse; font-size:11px;">
+            <thead style="text-align:left; color:#64748b;">
+              <tr>
+                <th style="padding:4px">Datum</th>
+                <th style="padding:4px">IDs</th>
+                <th style="padding:4px">Aanpassing</th>
+                <th style="padding:4px">Reden</th>
+                <th style="padding:4px">#</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logsWithCount.map(l => `
+                <tr style="border-top:1px solid #f1f5f9">
+                  <td style="padding:6px 4px; white-space:nowrap">${new Date(l.created_at).toLocaleString('nl-NL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</td>
+                  <td style="padding:6px 4px"><b>${l.offer_id}</b> | ${l.affiliate_id || '-'} | ${l.sub_id || '-'}</td>
+                  <td style="padding:6px 4px"><span class="badge badge-auto">ACC: ${l.new_accept}%</span></td>
+                  <td style="padding:6px 4px; color:#475569">${l.reason}</td>
+                  <td style="padding:6px 4px"><span style="background:#e2e8f0; padding:2px 5px; border-radius:10px">${l.adjustment_nr}e</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (e) { console.error("Logs error:", e); }
+    }
+
     async function fetchData(){
       const host = mount$('#c_groups');
       host.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b">Laden…</div>`;
       try {
         await ensureRules(); 
+        await fetchLogs();
         const q = new URLSearchParams({ 
           date_from: mount$('#c_from').value, date_to: mount$('#c_to').value,
           affiliate_id: mount$('#c_aff').value, offer_id: mount$('#c_off').value, sub_id: mount$('#c_sub').value
@@ -125,7 +183,7 @@
         const r = await fetch(`${API_COUNTERS}?${q.toString()}`, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         CACHE_DATA = j.items || [];
-        OPEN_GROUPS.clear(); // Start standaard ingeklapt
+        OPEN_GROUPS.clear(); 
         renderAll();
       } catch (e) { host.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`; }
     }
@@ -169,7 +227,6 @@
       rows.forEach(r => { t_tot += r.total; t_acc += r.accepted; t_rev += r.revenue; t_prof += r.profit; t_cost += r.cost; });
 
       const el = document.createElement('div');
-      // BEPAAL OF GROEP OPEN MOET ZIJN
       const isOpen = OPEN_GROUPS.has(key);
       el.className = `group ${isOpen ? '' : 'collapsed'}`; 
       
