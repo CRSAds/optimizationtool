@@ -24,7 +24,7 @@ async function dFetch(path, method = 'GET', body = null) {
 }
 
 function norm(val) {
-  return (val === null || val === undefined) ? '' : String(val).trim();
+  return (val === null || val === undefined) ? '' : String(val).trim().toLowerCase();
 }
 
 function cleanString(str) {
@@ -33,7 +33,6 @@ function cleanString(str) {
             .trim();
 }
 
-// --- NIEUWE SYNC FUNCTIE (Voor de structurele oplossing) ---
 export async function syncCountersToSupabase(date) {
   const qs = new URLSearchParams({
     filter: JSON.stringify({ date: { _eq: date } }),
@@ -63,47 +62,49 @@ export async function syncCountersToSupabase(date) {
 // --- MODULE 3: MAIN HANDLER ---
 export default async function handler(req, res) {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const timeFull = now.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' }) + ' ' + 
+                     now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
 
-    // STAP 1: Sync de counters naar de nieuwe tabel (Structurele oplossing)
+    // STAP 1: Sync de counters
     const syncedCount = await syncCountersToSupabase(today);
 
-    // STAP 2: Haal regels en stats op (Jouw originele logica)
-    const { data: rules } = await dFetch('/items/Optimization_rules?filter[auto_pilot][_eq]=true&limit=2000');
-    if (!rules || !rules.length) return res.json({ message: 'No auto-pilot rules found', synced: syncedCount });
+    // STAP 2: Haal regels en stats op
+    const { data: rules } = await dFetch('/items/Optimization_rules?filter[active][_eq]=true&filter[auto_pilot][_eq]=true&limit=2000');
+    if (!rules || !rules.length) return res.json({ message: 'No active auto-pilot rules found', synced: syncedCount });
 
     const { data: stats, error } = await supabase
       .from('offer_performance_v2')
-      .select('offer_id, sub_id, margin_pct, shortform_leads, visits, affise_cost, omzet_totaal, day')
+      .select('offer_id, sub_id, margin_pct, tool_total_leads, visits, affise_cost, omzet_totaal, day')
       .eq('day', today);
 
     if (error) throw error;
 
-    const specificSubIds = rules.filter(r => r.sub_id).map(r => norm(r.sub_id));
     const updates = [];
     const debug_info = [];
 
-    // STAP 3: Loop door regels (Jouw originele logica inclusief Isolation)
+    // STAP 3: Loop door regels
     for (const rule of rules) {
-      const identifier = `Offer ${rule.offer_id}${rule.sub_id ? ` (Sub ${rule.sub_id})` : ''}`;
+      const off = norm(rule.offer_id);
+      const sub = norm(rule.sub_id);
+      const identifier = `Offer ${off}${sub ? ` (Sub ${sub})` : ''}`;
       
+      // VERBETERDE MATCHING: Algemene regel pakt alle data van het offer als vangnet
       const matchingRows = stats.filter(s => {
-        if (norm(s.offer_id) !== norm(rule.offer_id)) return false;
-        if (rule.sub_id) {
-          return norm(s.sub_id) === norm(rule.sub_id);
-        } else {
-          return !specificSubIds.includes(norm(s.sub_id));
-        }
+        if (norm(s.offer_id) !== off) return false;
+        if (sub !== '') return norm(s.sub_id) === sub;
+        return true; 
       });
 
       if (matchingRows.length === 0) {
-        debug_info.push(`❌ ${identifier}: Geen geïsoleerde data.`);
+        debug_info.push(`❌ ${identifier}: Geen data vandaag.`);
         continue;
       }
 
       let totalLeads = 0, totalVisits = 0, totalCost = 0, totalRevenue = 0;
       for (const row of matchingRows) {
-        totalLeads += (row.shortform_leads || 0);
+        totalLeads += (row.tool_total_leads || 0);
         totalVisits += (row.visits || 0);
         totalCost += (row.affise_cost || 0);
         totalRevenue += (row.omzet_totaal || 0);
@@ -114,55 +115,43 @@ export default async function handler(req, res) {
       const minVolume = rule.min_volume || 20;
 
       if (totalLeads < minVolume) {
-        debug_info.push(`⚠️ ${identifier}: Volume te laag (${totalLeads}).`);
+        debug_info.push(`⚠️ ${identifier}: Volume te laag (${totalLeads}/${minVolume}).`);
         continue; 
       }
 
-      let currentAccept = rule.percent_accept || 100;
+      let currentAccept = Number(rule.percent_accept || 100);
       let newAccept = currentAccept;
       let logMsg = "";
-      const now = new Date();
-      const time = now.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' }) + ' ' + 
-                   now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
 
-      // Emergency Brake & EPC logica
+      // Agressieve sturing op EPC en Marge
       if (actualMargin < EMERGENCY_THRESHOLD) {
         newAccept = MIN_ACCEPT;
-        logMsg = `${time}: EMERGENCY! Marge ${actualMargin.toFixed(1)}%. Acc naar ${MIN_ACCEPT}%`;
+        logMsg = `${timeFull}: EMERGENCY! Marge ${actualMargin.toFixed(1)}%. Acc naar ${MIN_ACCEPT}%`;
+      } else if (rule.min_cpc > 0 && actualEpc > rule.min_cpc) {
+        // Als EPC > 2x Doel EPC, verlaag dan dubbel zo snel (20% ipv 10%)
+        const factor = actualEpc > (rule.min_cpc * 2) ? 2 : 1;
+        newAccept = Math.max(MIN_ACCEPT, currentAccept - (STEP_CHANGE * factor));
+        logMsg = `${timeFull}: EPC €${actualEpc.toFixed(2)} > €${rule.min_cpc.toFixed(2)}. Acc naar ${newAccept}%`;
       } else if (actualMargin < (rule.target_margin || 15)) {
         newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
-        logMsg = `${time}: Marge ${actualMargin.toFixed(1)}% te laag. Acc verlaagd naar ${newAccept}%`;
-      } else if (rule.min_cpc > 0) {
-        if (actualEpc > rule.min_cpc) {
-          newAccept = Math.max(MIN_ACCEPT, currentAccept - STEP_CHANGE);
-          logMsg = `${time}: EPC E${actualEpc.toFixed(2)} te hoog. Acc verlaagd naar ${newAccept}%`;
-        } else if (actualEpc < rule.min_cpc && actualMargin > (rule.target_margin + 5)) {
-          newAccept = Math.min(100, currentAccept + STEP_CHANGE);
-          logMsg = `${time}: EPC laag & Marge OK. Acc verhoogd naar ${newAccept}%`;
-        }
+        logMsg = `${timeFull}: Marge ${actualMargin.toFixed(1)}% te laag. Acc naar ${newAccept}%`;
+      } else if (actualMargin > (rule.target_margin + 10) && currentAccept < 100) {
+        newAccept = Math.min(100, currentAccept + STEP_CHANGE);
+        logMsg = `${timeFull}: Goede marge (${actualMargin.toFixed(1)}%). Acc naar ${newAccept}%`;
       }
 
       if (newAccept !== currentAccept) {
         updates.push({ id: rule.id, percent_accept: newAccept, pilot_log: cleanString(logMsg) });
-        debug_info.push(`✅ ${identifier} aangepast.`);
+        debug_info.push(`✅ ${identifier} aangepast naar ${newAccept}%.`);
       }
     }
 
     // STAP 4: Batch Update Directus
-    if (updates.length > 0) {
-      // Gebruik hier de correcte Directus PATCH syntax voor meerdere items
-      await dFetch('/items/Optimization_rules', 'PATCH', { 
-        keys: updates.map(u => u.id), 
-        data: { percent_accept: undefined, pilot_log: undefined } // Placeholder, Directus vereist specifieke payload voor batch
+    for (const update of updates) {
+      await dFetch(`/items/Optimization_rules/${update.id}`, 'PATCH', {
+        percent_accept: update.percent_accept,
+        pilot_log: update.pilot_log
       });
-      // Correctie: Voor batch updates met unieke waarden per rij in Directus 
-      // gebruiken we meestal een loop of de specifieke 'updates' array.
-      for (const update of updates) {
-        await dFetch(`/items/Optimization_rules/${update.id}`, 'PATCH', {
-          percent_accept: update.percent_accept,
-          pilot_log: update.pilot_log
-        });
-      }
     }
 
     return res.json({ 
