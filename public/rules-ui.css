@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-:root{
+:root {
   --bg: #f1f5f9;
   --panel: #ffffff;
   --input-bg: #f8fafc;
@@ -14,9 +14,9 @@
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
 }
 
-*{ box-sizing:border-box; }
+* { box-sizing: border-box; }
 
-body{
+body {
   font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -25,19 +25,37 @@ body{
 }
 
 /* --- MAIN LAYOUT WRAPPER --- */
-.rules-wrap{ 
+.rules-wrap { 
   width: 100%;
   max-width: 1800px; 
   margin: 0 auto; 
-  padding: 0 20px 20px 20px; 
-  height: 80vh; 
-  min-height: 500px; 
+  padding: 20px; 
   display: flex;
   flex-direction: column;
+  gap: 20px; /* Ruimte tussen de Pilot Card en de Rules Card */
 }
 
-/* --- DE CARD --- */
-.rules-card{ 
+/* --- PILOT LOG CARD (LOSSTAAND) --- */
+.pilot-log-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pilot-log-header {
+  background: #f8fafc;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* --- DE MAIN RULES CARD --- */
+.rules-card { 
   background: var(--panel); 
   border: 1px solid var(--border); 
   border-radius: 8px; 
@@ -45,11 +63,12 @@ body{
   display: flex; 
   flex-direction: column; 
   overflow: hidden; 
-  flex: 1; 
+  flex: 1;
+  min-height: 500px;
 }
 
 /* --- TOOLBAR --- */
-.rules-toolbar{
+.rules-toolbar {
   flex-shrink: 0;
   display: flex; 
   flex-wrap: nowrap; 
@@ -61,80 +80,90 @@ body{
   overflow-x: auto;
 }
 
-.rules-label{ font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.rules-label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
 
-.rules-input{
+.rules-input {
   background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 4px; height: 32px; padding: 0 8px; outline: none; font-size: 13px;
 }
-.rules-input:focus{ border-color: var(--brand); background: #fff; }
+.rules-input:focus { border-color: var(--brand); background: #fff; }
 
 /* --- BUTTONS --- */
-.rules-btn{
+.rules-btn {
   height: 32px; padding: 0 12px; border-radius: 4px; border: none;
   background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   white-space: nowrap; transition: filter 0.1s;
 }
-.rules-btn:hover{ filter: brightness(1.1); }
-.rules-btn.ghost{ background: transparent; color: var(--text); border: 1px solid var(--border); }
-.rules-btn.ok{ background: var(--ok); }
-.rules-btn.danger{ background: var(--danger); }
+.rules-btn:hover { filter: brightness(1.1); }
+.rules-btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.rules-btn.ok { background: var(--ok); }
+.rules-btn.danger { background: var(--danger); }
 
-/* --- SCROLL AREA --- */
-.table-wrap{ 
+/* --- TABLE AREA --- */
+.table-wrap { 
   flex: 1; 
   overflow-y: auto; 
   background: #fff; 
   position: relative;
 }
 
-table.rules{ 
+table.rules { 
   width: 100%; 
   border-collapse: collapse; 
   font-size: 13px; 
   table-layout: fixed; 
 }
 
-/* STICKY HEADERS */
-table.rules thead th{
+table.rules thead th {
   position: sticky; top: 0; z-index: 10; 
   background: var(--thead); color: var(--muted);
   text-align: left; 
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ALGEMENE CELLEN */
 table.rules td {
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  color: #334155; /* Verbeterd contrast voor leesbaarheid */
+  color: #334155;
 }
 
-/* --- RULES EDITOR ROWS --- */
-tr.group-row { background: #f8fafc; cursor: pointer; font-weight: 600; }
-tr.group-row:hover { background: #f1f5f9; }
+/* --- GROEP HEADERS (OFFER RIJEN) --- */
 tr.group-row td { 
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border); 
+  background: #f1f5f9 !important; 
+  color: #1e293b !important; 
+  font-weight: 700 !important; 
+  padding: 12px 16px !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+  cursor: pointer;
+}
+tr.group-row:hover td { background: #e2e8f0 !important; }
+
+.group-expander { 
+  display: inline-block; 
+  width: 20px; 
+  transition: transform 0.2s; 
+  color: var(--brand); 
+  font-weight: bold;
 }
 
-.group-expander { display: inline-block; width: 20px; transition: transform 0.2s; color: var(--muted); }
-tr.group-row.open .group-expander { transform: rotate(90deg); color: var(--brand); }
-
+/* --- REGEL RIJEN --- */
 tr.rule-row { display: none; }
 tr.rule-row.visible { display: table-row; }
-tr.rule-row td { 
-  padding: 4px 12px;
-  border-bottom: 1px solid #f1f5f9; height: 48px; 
-}
+tr.rule-row td { height: 48px; }
 tr.rule-row:hover td { background: #f8fafc; }
 
-/* Inputs in tabel met donkerder tekst */
+/* SNEL TOEVOEGEN RIJ */
+tr.quick-add-row td {
+  background: #f0f9ff !important;
+  border-bottom: 1px solid #bae6fd !important;
+}
+
+/* Inputs in tabel */
 table.rules input { 
   width: 100%; 
   height: 28px; 
@@ -147,7 +176,7 @@ table.rules input {
 }
 table.rules input:focus { border-color: var(--brand); outline: none; }
 
-/* Tooltip container voor Auto Pilot info */
+/* Pilot Info Tooltip */
 .pilot-info-wrapper {
   position: relative;
   display: inline-block;
@@ -169,10 +198,7 @@ table.rules input:focus { border-color: var(--brand); outline: none; }
   font-weight: 800;
 }
 
-.pilot-info-wrapper:hover .tooltip-text {
-  visibility: visible;
-  opacity: 1;
-}
+.pilot-info-wrapper:hover .tooltip-text { visibility: visible; opacity: 1; }
 
 .tooltip-text {
   visibility: hidden;
@@ -198,30 +224,23 @@ table.rules input:focus { border-color: var(--brand); outline: none; }
 .tooltip-text::after {
   content: "";
   position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-left: -5px;
-  border-width: 5px;
-  border-style: solid;
+  top: 100%; left: 50%; margin-left: -5px;
+  border-width: 5px; border-style: solid;
   border-color: #1e293b transparent transparent transparent;
 }
 
-.row-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; height: 100%; }
-.row-actions .rules-btn { height: 28px; padding: 0 10px; font-size: 11px; }
+.row-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; }
 
-/* --- FOOTER / NEW BAR --- */
-.newbar{
+/* --- NEW BAR / FOOTER --- */
+.newbar {
   flex-shrink: 0; background: #fff; padding: 10px 16px;
   display: flex; gap: 10px; align-items: center; z-index: 20;
 }
-
-.rules-empty{ padding: 40px; color: var(--muted); text-align: center; }
 
 /* Badges */
 .badge { padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; border: 1px solid transparent; text-transform: uppercase; }
 .badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
 .badge-off { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
 .badge-ok { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-.badge-danger { background: #fee2e2; color: #991b1b; }
 
 .chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
