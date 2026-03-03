@@ -1,453 +1,123 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-
-
-:root{
-
+:root {
   --bg: #f1f5f9;
-
   --panel: #ffffff;
-
   --input-bg: #f8fafc;
-
   --text: #0f172a;
-
   --muted: #64748b;
-
   --brand: #2563eb;
-
   --ok: #16a34a;
-
   --danger: #dc2626;
-
   --border: #e2e8f0;
-
   --thead: #f8fafc;
-
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-
 }
 
+* { box-sizing: border-box; }
 
-
-*{ box-sizing:border-box; }
-
-
-
-body{
-
+body {
   font-family: 'Inter', system-ui, sans-serif;
-
   background: var(--bg);
-
   color: var(--text);
-
   font-size: 13px;
-
   margin: 0;
-
 }
 
-
-
-/* --- MAIN LAYOUT WRAPPER --- */
-
-.rules-wrap{ 
-
+.rules-wrap { 
   width: 100%;
-
   max-width: 1800px; 
-
   margin: 0 auto; 
-
-  padding: 0 20px 20px 20px; 
-
-  height: 80vh; 
-
-  min-height: 500px; 
-
+  padding: 20px; 
   display: flex;
-
   flex-direction: column;
-
+  gap: 20px;
 }
 
-
-
-/* --- DE CARD --- */
-
-.rules-card{ 
-
-  background: var(--panel); 
-
-  border: 1px solid var(--border); 
-
-  border-radius: 8px; 
-
-  box-shadow: var(--shadow); 
-
-  display: flex; 
-
-  flex-direction: column; 
-
-  overflow: hidden; 
-
-  flex: 1; 
-
+/* PILOT LOG CARD - COMPACTER */
+.pilot-log-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 10px;
 }
 
-
-
-/* --- TOOLBAR --- */
-
-.rules-toolbar{
-
-  flex-shrink: 0;
-
-  display: flex; 
-
-  flex-wrap: nowrap; 
-
-  align-items: center; 
-
-  gap: 10px; 
-
-  padding: 10px 16px;
-
-  border-bottom: 1px solid var(--border); 
-
-  background: #fff;
-
-  overflow-x: auto;
-
-}
-
-
-
-.rules-label{ font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
-
-
-
-.rules-input{
-
-  background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
-
-  border-radius: 4px; height: 32px; padding: 0 8px; outline: none; font-size: 13px;
-
-}
-
-.rules-input:focus{ border-color: var(--brand); background: #fff; }
-
-
-
-/* --- BUTTONS --- */
-
-.rules-btn{
-
-  height: 32px; padding: 0 12px; border-radius: 4px; border: none;
-
-  background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
-
-  display: inline-flex; align-items: center; justify-content: center;
-
-  white-space: nowrap; transition: filter 0.1s;
-
-}
-
-.rules-btn:hover{ filter: brightness(1.1); }
-
-.rules-btn.ghost{ background: transparent; color: var(--text); border: 1px solid var(--border); }
-
-.rules-btn.ok{ background: var(--ok); }
-
-.rules-btn.danger{ background: var(--danger); }
-
-
-
-/* --- SCROLL AREA --- */
-
-.table-wrap{ 
-
-  flex: 1; 
-
-  overflow-y: auto; 
-
-  background: #fff; 
-
-  position: relative;
-
-}
-
-
-
-table.rules{ 
-
-  width: 100%; 
-
-  border-collapse: collapse; 
-
-  font-size: 13px; 
-
-  table-layout: fixed; 
-
-}
-
-
-
-/* STICKY HEADERS */
-
-table.rules thead th{
-
-  position: sticky; top: 0; z-index: 10; 
-
-  background: var(--thead); color: var(--muted);
-
-  text-align: left; 
-
-  padding: 10px 12px;
-
+.pilot-log-header {
+  background: #f8fafc;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
-
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-
-}
-
-
-
-/* ALGEMENE CELLEN */
-
-table.rules td {
-
-  padding: 6px 12px;
-
-  border-bottom: 1px solid #f1f5f9;
-
-  vertical-align: middle;
-
-  color: #334155; /* Verbeterd contrast voor leesbaarheid */
-
-}
-
-
-
-/* --- RULES EDITOR ROWS --- */
-
-tr.group-row { background: #f8fafc; cursor: pointer; font-weight: 600; }
-
-tr.group-row:hover { background: #f1f5f9; }
-
-tr.group-row td { 
-
-  padding: 8px 12px;
-
-  border-bottom: 1px solid var(--border); 
-
-}
-
-
-
-.group-expander { display: inline-block; width: 20px; transition: transform 0.2s; color: var(--muted); }
-
-tr.group-row.open .group-expander { transform: rotate(90deg); color: var(--brand); }
-
-
-
-tr.rule-row { display: none; }
-
-tr.rule-row.visible { display: table-row; }
-
-tr.rule-row td { 
-
-  padding: 4px 12px;
-
-  border-bottom: 1px solid #f1f5f9; height: 48px; 
-
-}
-
-tr.rule-row:hover td { background: #f8fafc; }
-
-
-
-/* Inputs in tabel met donkerder tekst */
-
-table.rules input { 
-
-  width: 100%; 
-
-  height: 28px; 
-
-  border: 1px solid var(--border); 
-
-  border-radius: 4px; 
-
-  padding: 0 6px; 
-
-  font-size: 12px;
-
-  color: #1e293b; 
-
-  font-weight: 500;
-
-}
-
-table.rules input:focus { border-color: var(--brand); outline: none; }
-
-
-
-/* Tooltip container voor Auto Pilot info */
-
-.pilot-info-wrapper {
-
-  position: relative;
-
-  display: inline-block;
-
-  margin-left: 6px;
-
-  cursor: help;
-
-  vertical-align: middle;
-
-}
-
-
-
-.info-icon {
-
-  display: inline-flex;
-
+  display: flex;
   align-items: center;
-
-  justify-content: center;
-
-  width: 16px;
-
-  height: 16px;
-
-  background: #e2e8f0;
-
-  color: #64748b;
-
-  border-radius: 50%;
-
-  font-size: 10px;
-
-  font-weight: 800;
-
+  justify-content: space-between;
 }
 
-
-
-.pilot-info-wrapper:hover .tooltip-text {
-
-  visibility: visible;
-
-  opacity: 1;
-
+/* MAIN CARD */
+.rules-card { 
+  background: var(--panel); 
+  border: 1px solid var(--border); 
+  border-radius: 8px; 
+  box-shadow: var(--shadow); 
+  display: flex; 
+  flex-direction: column; 
+  overflow: hidden; 
 }
 
-
-
-.tooltip-text {
-
-  visibility: hidden;
-
-  width: 240px;
-
-  background-color: #1e293b;
-
-  color: #fff;
-
-  text-align: left;
-
-  border-radius: 6px;
-
-  padding: 10px 12px;
-
-  position: absolute;
-
-  z-index: 100;
-
-  bottom: 125%; 
-
-  left: 50%;
-
-  margin-left: -120px;
-
-  opacity: 0;
-
-  transition: opacity 0.2s;
-
-  font-size: 11px;
-
-  line-height: 1.4;
-
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-
-  pointer-events: none;
-
+.rules-toolbar {
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border); 
+  background: #fff;
 }
 
+.table-wrap { overflow-x: auto; background: #fff; }
 
+table.rules { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 
-.tooltip-text::after {
-
-  content: "";
-
-  position: absolute;
-
-  top: 100%;
-
-  left: 50%;
-
-  margin-left: -5px;
-
-  border-width: 5px;
-
-  border-style: solid;
-
-  border-color: #1e293b transparent transparent transparent;
-
+table.rules thead th {
+  position: sticky; top: 0; z-index: 10; 
+  background: var(--thead); color: var(--muted);
+  text-align: left; padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
 }
 
-
-
-.row-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; height: 100%; }
-
-.row-actions .rules-btn { height: 28px; padding: 0 10px; font-size: 11px; }
-
-
-
-/* --- FOOTER / NEW BAR --- */
-
-.newbar{
-
-  flex-shrink: 0; background: #fff; padding: 10px 16px;
-
-  display: flex; gap: 10px; align-items: center; z-index: 20;
-
+/* COMPACTERE RIJEN */
+table.rules td {
+  padding: 4px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  color: #334155;
+  height: 32px; /* Veel compacter */
 }
 
+/* HOOFDRIJEN (GROEPEN) */
+tr.group-header { 
+  background: #f1f5f9 !important; 
+  cursor: pointer;
+}
+tr.group-header td { 
+  font-weight: 700 !important; 
+  padding: 8px 16px !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
 
+.chev { 
+  display: inline-block; 
+  transition: transform 0.2s; 
+  margin-right: 8px;
+  color: var(--brand);
+}
 
-.rules-empty{ padding: 40px; color: var(--muted); text-align: center; }
+/* Inklap logica via CSS class */
+.group.collapsed .group-body { display: none; }
+.group.collapsed .chev { transform: rotate(-90deg); }
 
-
-
-/* Badges */
-
-.badge { padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; border: 1px solid transparent; text-transform: uppercase; }
-
-.badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
-
-.badge-off { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-
-.badge-ok { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-
+.badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; text-transform: uppercase; }
+.badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; border: 1px solid; }
 .badge-danger { background: #fee2e2; color: #991b1b; }
-
-
-
-.chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+.badge-ok { background: #dcfce7; color: #166534; }
