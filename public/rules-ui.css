@@ -29,13 +29,13 @@ body {
   width: 100%;
   max-width: 1800px; 
   margin: 0 auto; 
-  padding: 20px; 
+  padding: 0 20px 20px 20px; 
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* --- PILOT LOG CARD (SEPARATE) --- */
+/* --- PILOT LOG CARD (VOLLEDIG LOSSTAAND) --- */
 .pilot-log-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -47,14 +47,14 @@ body {
 
 .pilot-log-header {
   background: #f8fafc;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* --- MAIN RESULTS CARD --- */
+/* --- DE MAIN RESULTATEN / RULES CARD --- */
 .rules-card { 
   background: var(--panel); 
   border: 1px solid var(--border); 
@@ -66,6 +66,7 @@ body {
   flex: 1;
 }
 
+/* --- TOOLBAR --- */
 .rules-toolbar {
   flex-shrink: 0;
   display: flex; 
@@ -78,44 +79,67 @@ body {
   overflow-x: auto;
 }
 
+.rules-label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+
 .rules-input {
   background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 4px; height: 32px; padding: 0 8px; outline: none; font-size: 13px;
 }
+.rules-input:focus { border-color: var(--brand); background: #fff; }
 
+/* --- BUTTONS --- */
 .rules-btn {
   height: 32px; padding: 0 12px; border-radius: 4px; border: none;
   background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; transition: filter 0.1s;
+}
+.rules-btn:hover { filter: brightness(1.1); }
+.rules-btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.rules-btn.ok { background: var(--ok); }
+.rules-btn.danger { background: var(--danger); }
+
+/* --- TABLE AREA --- */
+.table-wrap { 
+  flex: 1; 
+  overflow-y: auto; 
+  background: #fff; 
+  position: relative;
 }
 
-/* --- TABLE STYLING --- */
-.table-wrap { flex: 1; overflow-y: auto; background: #fff; position: relative; }
-
-table.rules { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+table.rules { 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: 12px; 
+  table-layout: fixed; 
+}
 
 table.rules thead th {
   position: sticky; top: 0; z-index: 10; 
   background: var(--thead); color: var(--muted);
-  text-align: left; padding: 8px 12px;
+  text-align: left; 
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   font-size: 11px; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap;
 }
 
+/* COMPACTE RIJEN VOOR RESULTATEN */
 table.rules td {
   padding: 4px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  height: 32px; /* COMPACT ROWS */
+  color: #334155;
+  height: 32px; /* GEFORCEERDE HOOGTE */
 }
 
-/* --- GROUP HEADERS --- */
+/* --- GROEP HEADERS (DE RIJEN DIE JE KUNT INKLAPPEN) --- */
 .group-header { 
   background: #f1f5f9 !important; 
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid #cbd5e1;
 }
 
@@ -123,23 +147,94 @@ table.rules td {
 
 .chev { 
   display: inline-block; 
-  width: 16px; height: 16px;
+  width: 16px;
+  height: 16px;
   transition: transform 0.2s; 
   margin-right: 8px;
   color: var(--brand);
   text-align: center;
 }
 
+/* INKLAP-LOGICA VIA CSS CLASSES */
 .group.collapsed .group-body { display: none; }
 .group.collapsed .chev { transform: rotate(-90deg); }
 
-/* --- BADGES --- */
-.badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; text-transform: uppercase; border: 1px solid transparent; }
+/* --- BADGES & STATUS --- */
+.badge { padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; display: inline-block; border: 1px solid transparent; text-transform: uppercase; }
 .badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
-.badge-ok { background: #dcfce7; color: #166534; }
+.badge-off { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.badge-ok { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
 .badge-danger { background: #fee2e2; color: #991b1b; }
 
-.total-summary { 
-  padding: 12px 16px; background: var(--brand); color: #fff; font-weight: 700; 
-  display: flex; justify-content: space-between; border-radius: 0 0 8px 8px;
+.bot-icon { font-size: 14px; margin-right: 4px; vertical-align: middle; }
+
+/* --- PILOT INFO TOOLTIP (RULES-UI) --- */
+.pilot-info-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-left: 6px;
+  cursor: help;
+  vertical-align: middle;
 }
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #e2e8f0;
+  color: #64748b;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.pilot-info-wrapper:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+.tooltip-text {
+  visibility: hidden;
+  width: 240px;
+  background-color: #1e293b;
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 10px 12px;
+  position: absolute;
+  z-index: 100;
+  bottom: 125%; 
+  left: 50%;
+  margin-left: -120px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+/* --- SUMMARY / GRAND TOTAL --- */
+.total-summary { 
+  padding: 12px 16px; 
+  background: var(--brand); 
+  color: #fff; 
+  font-weight: 700; 
+  display: flex; 
+  justify-content: space-between; 
+}
+
+.chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
