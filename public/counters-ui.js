@@ -9,42 +9,23 @@
   let CURRENT_SORT = { key: 'profit', dir: -1 }; 
   let CACHE_DATA = []; 
   let RULES_MAP = {};
-  // Houdt bij welke groepen (bijv. datums) zijn opengeklapt
   let OPEN_GROUPS = new Set(); 
 
   function startApp() {
     const mount = document.getElementById('counters-ui');
     if(!mount) return;
 
-    const style = document.createElement('style');
-    style.innerHTML = `
-      .rules thead th { 
-        background-color: #eff6ff !important; 
-        color: #1e40af !important; 
-        border-bottom: 2px solid #bfdbfe !important;
-        padding: 12px 8px !important;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.025em;
-      }
-      .rules tbody tr:hover { background-color: #f8fafc; }
-      .bot-icon { font-size: 14px; margin-right: 6px; }
-      .rules td { vertical-align: middle; height: 45px; }
-      .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-      .badge-danger { background: #fee2e2; color: #991b1b; }
-      .badge-ok { background: #dcfce7; color: #166534; }
-      .badge-auto { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
-      /* CSS voor inklappen */
-      .group.collapsed .group-body { display: none; }
-      .group.collapsed .chev { transform: rotate(0deg) !important; }
-      
-      #pilot-logs-list::-webkit-scrollbar { width: 6px; }
-      #pilot-logs-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-    `;
-    document.head.appendChild(style);
-
+    // De HTML structuur met een aparte container voor de logs boven de hoofdkaart
     mount.innerHTML = `
       <div class="rules-wrap">
+        <div id="pilot-logs-container" class="pilot-log-card" style="display:none;">
+           <div class="pilot-log-header">
+              <span style="font-size:12px; font-weight:800; color:#1e40af; text-transform:uppercase;">🚀 Recente Pilot Ingrepen</span>
+              <span style="font-size:11px; color:#64748b;">Laatste 50 acties</span>
+           </div>
+           <div id="pilot-logs-list" style="max-height:300px; overflow-y:auto;"></div>
+        </div>
+
         <div class="rules-card">
           <div class="rules-toolbar" style="flex-wrap:nowrap; overflow-x:auto;">
             <input id="c_token" class="rules-input" type="password" style="width:120px" placeholder="Token">
@@ -68,12 +49,8 @@
              <button class="badge badge-auto" data-preset="last7" style="border:none;cursor:pointer">7 Dagen</button>
              <button class="badge badge-auto" data-preset="month" style="border:none;cursor:pointer">Deze maand</button>
           </div>
-          <div class="table-wrap" style="display:flex; flex-direction:column;">
-             <div id="pilot-logs-widget" style="display:none; background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:15px; max-height:250px; overflow-y:auto;">
-               <h4 style="margin:0 0 10px 0; font-size:12px; color:#1e40af; text-transform:uppercase;">🚀 Recente Pilot Ingrepen</h4>
-               <div id="pilot-logs-list"></div>
-             </div>
-             <div id="c_groups" style="padding-bottom:20px; flex:1"></div>
+          <div class="table-wrap">
+            <div id="c_groups" style="padding-bottom:20px;"></div>
           </div>
         </div>
       </div>
@@ -126,14 +103,14 @@
 
     async function fetchLogs() {
       const list = mount$('#pilot-logs-list');
-      const widget = mount$('#pilot-logs-widget');
+      const container = mount$('#pilot-logs-container');
       try {
         const r = await fetch(API_LOGS, { headers: { 'X-Admin-Token': tokenInput.value.trim() } });
         const j = await r.json();
         const logs = j.items || [];
         
-        if (logs.length === 0) { widget.style.display = 'none'; return; }
-        widget.style.display = 'block';
+        if (logs.length === 0) { container.style.display = 'none'; return; }
+        container.style.display = 'block';
 
         const counts = {};
         const reversed = [...logs].reverse();
@@ -144,24 +121,24 @@
         }).reverse();
 
         list.innerHTML = `
-          <table style="width:100%; border-collapse:collapse; font-size:11px;">
-            <thead style="text-align:left; color:#64748b;">
-              <tr>
-                <th style="padding:4px">Datum</th>
-                <th style="padding:4px">IDs</th>
-                <th style="padding:4px">Aanpassing</th>
-                <th style="padding:4px">Reden</th>
-                <th style="padding:4px">#</th>
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead style="background:#f8fafc; position:sticky; top:0; z-index:5;">
+              <tr style="text-align:left; color:#64748b; border-bottom:1px solid #e2e8f0;">
+                <th style="padding:10px 16px">Datum</th>
+                <th style="padding:10px 16px">IDs</th>
+                <th style="padding:10px 16px">Aanpassing</th>
+                <th style="padding:10px 16px">Reden</th>
+                <th style="padding:10px 16px; text-align:center;">#</th>
               </tr>
             </thead>
             <tbody>
               ${logsWithCount.map(l => `
-                <tr style="border-top:1px solid #f1f5f9">
-                  <td style="padding:6px 4px; white-space:nowrap">${new Date(l.created_at).toLocaleString('nl-NL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</td>
-                  <td style="padding:6px 4px"><b>${l.offer_id}</b> | ${l.affiliate_id || '-'} | ${l.sub_id || '-'}</td>
-                  <td style="padding:6px 4px"><span class="badge badge-auto">ACC: ${l.new_accept}%</span></td>
-                  <td style="padding:6px 4px; color:#475569">${l.reason}</td>
-                  <td style="padding:6px 4px"><span style="background:#e2e8f0; padding:2px 5px; border-radius:10px">${l.adjustment_nr}e</span></td>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:10px 16px; white-space:nowrap; color:#1e293b;">${new Date(l.created_at).toLocaleString('nl-NL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</td>
+                  <td style="padding:10px 16px"><b>${l.offer_id}</b> <span style="color:#94a3b8">|</span> ${l.affiliate_id || '-'} <span style="color:#94a3b8">|</span> ${l.sub_id || '-'}</td>
+                  <td style="padding:10px 16px"><span class="badge badge-auto" style="font-size:11px;">ACC: ${l.new_accept}%</span></td>
+                  <td style="padding:10px 16px; color:#475569;">${l.reason}</td>
+                  <td style="padding:10px 16px; text-align:center;"><span style="background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 8px; border-radius:12px; font-weight:700; font-size:10px;">${l.adjustment_nr}e</span></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -230,14 +207,15 @@
       const isOpen = OPEN_GROUPS.has(key);
       el.className = `group ${isOpen ? '' : 'collapsed'}`; 
       
+      // GECORRIGEERDE HOOFDRIJ: Strakke uitlijning en duidelijkere KPI's
       el.innerHTML = `
-        <div class="group-header" data-role="toggle" style="cursor:pointer" data-key="${key}">
-          <span class="chev" style="transform:${isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
-          <span><b>${key}</b></span>
-          <div style="margin-left:auto; display:flex; gap:15px; font-size:12px; font-weight:400; color:#64748b; align-items:center">
-             <span>Rev: <b>${money(t_rev)}</b></span>
+        <div class="group-header" data-role="toggle" style="cursor:pointer; display:flex; align-items:center; padding:12px 16px; background:#f1f5f9; border-bottom:1px solid #cbd5e1;" data-key="${key}">
+          <span class="chev" style="transform:${isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}; margin-right:10px; font-weight:bold; color:#2563eb;">▶</span>
+          <span style="font-size:14px; font-weight:800; color:#1e293b;">${key}</span>
+          <div style="margin-left:auto; display:flex; gap:20px; font-size:12px; align-items:center">
+             <span>Rev: <b style="color:#1e293b">${money(t_rev)}</b></span>
              <span>Profit: <b style="color:${t_prof >= 0 ? '#16a34a':'#dc2626'}">${money(t_prof)}</b></span>
-             <span style="border-left:1px solid #cbd5e1; padding-left:15px">Total: <b>${fmt(t_tot)}</b> • Acc: <b>${fmt(t_acc)}</b> (${pct(t_acc,t_tot).toFixed(1)}%)</span>
+             <span style="border-left:1px solid #cbd5e1; padding-left:20px; color:#64748b;">Leads: <b style="color:#1e293b">${fmt(t_tot)}</b> • Acc: <b style="color:#1e293b">${pct(t_acc,t_tot).toFixed(1)}%</b></span>
           </div>
         </div>
         <div class="group-body">
@@ -253,7 +231,7 @@
                 <th style="cursor:pointer" data-sort="cost">KOSTEN ↕</th>
                 <th style="cursor:pointer" data-sort="profit">WINST ↕</th>
                 <th style="cursor:pointer" data-sort="accepted">ACC % ↕</th>
-                <th>TARGET MARGE</th>
+                <th>TARGET</th>
                 <th style="cursor:pointer" data-sort="actual_margin">MARGE % ↕</th> 
                 <th>DOEL EPC</th>
                 <th style="cursor:pointer" data-sort="visits">EPC ↕</th>
@@ -269,14 +247,14 @@
                 const showBot = rule.auto_pilot ? '<span class="bot-icon">🤖</span>' : '';
                 return `
                   <tr>
-                    <td>${escapeHtml(r.offer_id)}</td><td>${escapeHtml(r.affiliate_id)}</td><td>${escapeHtml(r.sub_id)}</td>
+                    <td><b>${escapeHtml(r.offer_id)}</b></td><td>${escapeHtml(r.affiliate_id)}</td><td>${escapeHtml(r.sub_id)}</td>
                     <td>${fmt(r.total)}</td><td>${fmt(r.accepted)}</td><td>${money(r.revenue)}</td>
                     <td style="color:#64748b">${money(r.cost)}</td><td style="font-weight:700; color:${r.profit >= 0 ? '#16a34a' : '#dc2626'}">${money(r.profit)}</td>
-                    <td style="font-weight:600;"><div style="display:flex; align-items:center;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</div></td>
-                    <td style="font-weight:600;color:#2563eb">${targetMarge}%</td>
+                    <td style="font-weight:700;"><div style="display:flex; align-items:center;">${showBot}${pct(r.accepted,r.total).toFixed(1)}%</div></td>
+                    <td style="color:#2563eb">${targetMarge}%</td>
                     <td><span class="badge ${isDanger ? 'badge-danger' : 'badge-ok'}">${r.actual_margin ? r.actual_margin.toFixed(1)+'%' : '—'}</span></td>
-                    <td style="color:#1e40af; font-weight:600;">${rule.min_cpc > 0 ? money(rule.min_cpc) : '-'}</td>
-                    <td style="font-weight:600">${money(epc)}</td>
+                    <td style="color:#1e40af; font-weight:700;">${rule.min_cpc > 0 ? money(rule.min_cpc) : '-'}</td>
+                    <td style="font-weight:700">${money(epc)}</td>
                   </tr>`;
               }).join('')}
             </tbody>
@@ -301,7 +279,8 @@
       allRows.forEach(it => { total += it.total_leads; accepted += it.accepted_leads; rev += (it.revenue || 0); prof += (it.profit || 0); });
       const wrap = document.createElement('div');
       wrap.className = 'total-summary';
-      wrap.innerHTML = `<span>TOTAAL SELECTIE</span><div style="display:flex; gap:20px"><span>Omzet: ${money(rev)}</span><span>Winst: ${money(prof)}</span><span>Leads: ${fmt(total)} • Acc: ${fmt(accepted)} (${pct(accepted,total).toFixed(1)}%)</span></div>`;
+      wrap.style.cssText = "padding:16px; background:#1e40af; color:#fff; font-weight:800; border-radius:0 0 8px 8px; display:flex; justify-content:space-between; align-items:center;";
+      wrap.innerHTML = `<span>TOTAAL SELECTIE</span><div style="display:flex; gap:25px"><span>Omzet: ${money(rev)}</span><span>Winst: ${money(prof)}</span><span>Leads: ${fmt(total)} (Acc: ${pct(accepted,total).toFixed(1)}%)</span></div>`;
       return wrap;
     }
 
