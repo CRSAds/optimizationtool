@@ -24,20 +24,29 @@ async function dFetch(path, method = 'GET', body = null) {
   return r.json();
 }
 
-// Strikte matching logica: voorkomt "double-dipping" tussen algemene en sub_id regels
+// Strikte matching logica: voorkomt "double-dipping" (Nu INCLUSIEF affiliate_id)
 function matchScore(rule, row) {
   const isWildcard = (val) => val === null || val === undefined || String(val).trim() === '';
+  
   const rowSub = String(row.sub_id || '').trim().toLowerCase();
   const ruleSub = String(rule.sub_id || '').trim().toLowerCase();
+  
   const rowOff = String(row.offer_id || '').trim().toLowerCase();
   const ruleOff = String(rule.offer_id || '').trim().toLowerCase();
   
+  const rowAff = String(row.affiliate_id || '').trim().toLowerCase();
+  const ruleAff = String(rule.affiliate_id || '').trim().toLowerCase();
+  
+  // Als een regel een specifiek ID eist, en de rij heeft iets anders, diskwalificeer direct
   if (!isWildcard(rule.offer_id) && ruleOff !== rowOff) return -1;
+  if (!isWildcard(rule.affiliate_id) && ruleAff !== rowAff) return -1;
   if (!isWildcard(rule.sub_id) && ruleSub !== rowSub) return -1;
 
   let score = 0;
   if (!isWildcard(rule.offer_id)) score += 1;
-  if (!isWildcard(rule.sub_id)) score += 5; // Sub-match wint áltijd van een algemene match
+  if (!isWildcard(rule.affiliate_id)) score += 2; 
+  if (!isWildcard(rule.sub_id)) score += 5; // Sub-match wint áltijd
+  
   return score;
 }
 
@@ -60,9 +69,10 @@ export default async function handler(req, res) {
     const { data: rules } = await dFetch('/items/Optimization_rules?filter[active][_eq]=true&filter[auto_pilot][_eq]=true');
     if (!rules || !rules.length) return res.json({ message: 'No active auto-pilot rules found' });
 
+    // UPDATE: We halen nu expliciet ook affiliate_id op uit Supabase
     const { data: stats, error } = await supabase
       .from('offer_performance_v2')
-      .select('offer_id, sub_id, tool_total_leads, visits, affise_cost, omzet_totaal, day')
+      .select('offer_id, sub_id, affiliate_id, tool_total_leads, visits, affise_cost, omzet_totaal, day')
       .eq('day', today);
 
     if (error) throw error;
@@ -94,7 +104,7 @@ export default async function handler(req, res) {
     const updates = [];
     const debug_info = [];
 
-    // 3. SMART HYBRID CONTROLLER
+    // 3. SMART HYBRID CONTROLLER EVALUATIE
     for (const [ruleId, perf] of rulePerformance.entries()) {
       const rule = perf.rule;
       const targetMargin = rule.target_margin || 15;
@@ -112,9 +122,9 @@ export default async function handler(req, res) {
       let newAccept = currentAccept;
       let logMsg = "";
 
-      // BESLISBOOM
+      // BESLISBOOM: Smart Hybrid Logica
       if (doelEpc > 0 && publisherEpc > doelEpc) {
-        // HARDE CUT: Publisher is te duur. Direct naar 5%.
+        // HARDE CUT: Publisher is te duur. Direct naar PAUSE_ACCEPT. Geen genade.
         newAccept = PAUSE_ACCEPT;
         logMsg = `${timeFull}: Te duur! Pub EPC (€${publisherEpc.toFixed(2)}) > Doel (€${doelEpc.toFixed(2)}). Kraan direct dicht naar ${PAUSE_ACCEPT}%.`;
       } 
@@ -124,15 +134,15 @@ export default async function handler(req, res) {
         logMsg = `${timeFull}: Noodstop! Marge kritiek (${actualMargin.toFixed(1)}%). Kraan direct dicht naar ${PAUSE_ACCEPT}%.`;
       } 
       else if (actualMargin < targetMargin) {
-        // ZACHTE CUT: Marge is positief, maar onder de target. We schalen af om risico te mitigeren.
+        // ZACHTE CUT: Marge is positief, maar onder de target. Afschalen met 20% stappen.
         newAccept = Math.max(PAUSE_ACCEPT, currentAccept - STEP);
         logMsg = `${timeFull}: Marge te laag (${actualMargin.toFixed(1)}% < ${targetMargin}%). Afgeschaald naar ${newAccept}%.`;
       } 
       else if (actualMargin >= targetMargin) {
-        // GEZOND: We halen de targets. We schalen voorzichtig op om te testen of de kwaliteit behouden blijft.
+        // GEZOND: Marges worden gehaald. Voorzichtig opschalen.
         if (currentAccept < FULL_ACCEPT) {
           newAccept = Math.min(FULL_ACCEPT, currentAccept + STEP);
-          logMsg = `${timeFull}: Gezond! Marge (${actualMargin.toFixed(1)}%) >= Target. Voorzichtig opgeschaald naar ${newAccept}%.`;
+          logMsg = `${timeFull}: Gezond! Marge (${actualMargin.toFixed(1)}%) >= Target. Opgeschaald naar ${newAccept}%.`;
         }
       }
 
@@ -149,7 +159,7 @@ export default async function handler(req, res) {
           reason: cleanString(logMsg)
         });
         
-        debug_info.push(`✅ Offer ${rule.offer_id} (Sub: ${rule.sub_id || '-'}) -> ${newAccept}%`);
+        debug_info.push(`✅ Offer ${rule.offer_id} (Aff: ${rule.affiliate_id || '-'}, Sub: ${rule.sub_id || '-'}) -> ${newAccept}%`);
       }
     }
 
